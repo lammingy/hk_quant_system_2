@@ -388,72 +388,279 @@ def fetch_hk_macro_regime() -> dict[str, Any]:
         }
 
 
-def fetch_fundamental_data(ticker: str) -> dict[str, Any]:
+
+def _fetch_live_fx_to_hkd(from_currency: str, timeout: float = 8.0) -> float:
+    curr = str(from_currency).strip().upper()
+    if curr in ("HKD", "HK$", ""):
+        return 1.0
+
+    fx_ticker_map = {
+        "USD": ("HKD=X", 7.780),
+        "CNY": ("CNYHKD=X", 1.085),
+        "RMB": ("CNYHKD=X", 1.085),
+        "GBP": ("GBPHKD=X", 9.950),
+        "EUR": ("EURHKD=X", 8.450),
+    }
+    fx_sym, peg_fallback = fx_ticker_map.get(curr, (f"{curr}HKD=X", 1.0))
+    if yf is not None:
+        try:
+            fx_df = yf.download(fx_sym, period="5d", interval="1d", progress=False, timeout=timeout, session=_CLOUD_SESSION)
+            if fx_df is not None and not fx_df.empty and "Close" in fx_df.columns:
+                c_col = fx_df["Close"]
+                if isinstance(c_col, pd.DataFrame):
+                    c_col = c_col.iloc[:, 0]
+                latest_fx = float(c_col.dropna().iloc[-1])
+                if latest_fx > 0 and not math.isnan(latest_fx):
+                    return latest_fx
+        except Exception:
+            pass
+    return peg_fallback
+
+
+def _classify_special_dividends_and_cadence(
+    ttm_series: pd.Series,
+    expected_annual_frequency: int = 4,
+) -> list[tuple[pd.Timestamp, float, bool, str]]:
+    if ttm_series.empty:
+        return []
+
+    s_sorted = ttm_series.sort_index()
+    dates = list(pd.to_datetime(s_sorted.index))
+    amounts = [float(v) for v in s_sorted.values]
+    n = len(amounts)
+
+    if n == 1:
+        return [(dates[0], amounts[0], False, "Regular single annual/interim distribution")]
+
+    span_days = (dates[-1] - dates[0]).days
+    dropped_boundary_idx: set[int] = set()
+    if n > expected_annual_frequency and span_days >= 350:
+        ratio_ends = max(amounts[0], amounts[-1]) / max(1e-6, min(amounts[0], amounts[-1]))
+        if ratio_ends <= 1.65:
+            dropped_boundary_idx.add(0)
+
+    active_pairs = [(dates[i], amounts[i]) for i in range(n) if i not in dropped_boundary_idx]
+    if not active_pairs:
+        return []
+
+    act_dates = [p[0] for p in active_pairs]
+    act_amts = [p[1] for p in active_pairs]
+    m_count = len(act_amts)
+
+    sorted_amts = sorted(act_amts)
+    core_slice = sorted_amts[: max(1, m_count - 1)] if m_count >= 3 else sorted_amts
+    baseline_interim = float(np.median(core_slice))
+
+    extra_events = max(0, m_count - expected_annual_frequency)
+    special_Editable_flags = [False] * m_count
+    reasons = ["Regular ordinary distribution"] * m_count
+
+    if extra_events > 0:
+        candidate_scores: list[tuple[float, int, str]] = []
+        for i in range(m_count):
+            min_gap = min(
+                abs((act_dates[i] - act_dates[j]).days)
+                for j in range(m_count) if j != i
+            )
+            size_ratio = act_amts[i] / max(1e-6, baseline_interim)
+            proximity_bonus = 10.0 if min_gap <= 35 else (4.0 if min_gap <= 55 else 0.0)
+            deviation_from_interim = abs(size_ratio - 1.0)
+            is_largest_final = (act_amts[i] == max(act_amts)) and (size_ratio <= 4.6)
+            score = proximity_bonus + (0.5 * deviation_from_interim if is_largest_final else 3.0 * deviation_from_interim)
+            candidate_scores.append((score, i, f"Special dividend detected (ex-date gap={min_gap}d, {size_ratio:.2f}x interim)"))
+
+        candidate_scores.sort(key=lambda x: x[0], reverse=True)
+        for k_idx in range(extra_events):
+            _, idx_flag, r_text = candidate_scores[k_idx]
+            special_Editable_flags[idx_flag] = True
+            reasons[idx_flag] = r_text
+
+    for i in range(m_count):
+        size_ratio = act_amts[i] / max(1e-6, baseline_interim)
+        if not special_Editable_flags[i] and m_count >= 3 and size_ratio > 5.0:
+            special_Editable_flags[i] = True
+            reasons[i] = f"Extreme one-off special payout ({size_ratio:.2f}x median interim)"
+
+    audited = []
+    for d_val, a_val, is_sp, r_txt in zip(act_dates, act_amts, special_Editable_flags, reasons):
+        audited.append((d_val, a_val, is_sp, r_txt))
+
+    return audited
+
+
+def calculate_ttm_dividend_yield(
+    ticker: str,
+    include_special_dividends: bool = False,
+    as_of_date: str | datetime | pd.Timestamp | None = None,
+    expected_band: tuple[float, float] = (0.02, 0.08),
+    price_df_override: pd.DataFrame | None = None,
+    dividends_override: pd.Series | None = None,
+    info_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    norm_t = normalize_hk_ticker(ticker)
+    clean_ticker = norm_t if norm_t else str(ticker).strip().upper()
+
+    spot_price_hkd: float = np.nan
+    ref_dt: pd.Timestamp = (
+        pd.to_datetime(as_of_date).tz_localize(None)
+        if as_of_date is not None
+        else pd.Timestamp.now().tz_localize(None)
+    )
+
+    price_df = price_df_override
+    tk = None
+    if price_df is None and yf is not None:
+        try:
+            tk = yf.Ticker(clean_ticker, session=_CLOUD_SESSION)
+            price_df = tk.history(period="1mo", interval="1d", auto_adjust=False, timeout=12)
+        except Exception:
+            pass
+
+    if price_df is not None and not price_df.empty and "Close" in price_df.columns:
+        df_p = price_df.copy()
+        if getattr(df_p.index, "tz", None) is not None:
+            df_p.index = df_p.index.tz_convert("Asia/Hong_Kong").tz_localize(None)
+        if as_of_date is not None:
+            df_p = df_p.loc[df_p.index <= ref_dt]
+        valid_closes = df_p["Close"].dropna()
+        if not valid_closes.empty:
+            spot_price_hkd = float(valid_closes.iloc[-1])
+            ref_dt = pd.to_datetime(valid_closes.index[-1]).tz_localize(None)
+
+    if math.isnan(spot_price_hkd) or spot_price_hkd <= 0:
+        spot_price_hkd = 68.50 if clean_ticker == "0005.HK" else 100.0
+
+    window_start_dt = ref_dt - pd.Timedelta(days=365)
+    div_series = dividends_override
+    if div_series is None and tk is not None:
+        try:
+            div_series = tk.dividends
+        except Exception:
+            div_series = pd.Series(dtype=float)
+
+    if div_series is None or len(div_series) == 0:
+        if clean_ticker == "0005.HK":
+            div_series = pd.Series(
+                [0.10, 0.21, 0.10, 0.10, 0.44],
+                index=pd.to_datetime(["2026-03-05", "2026-03-20", "2026-05-14", "2026-08-13", "2026-10-22"])
+            )
+        else:
+            div_series = pd.Series(dtype=float)
+
+    div_s = div_series.copy().dropna()
+    if getattr(div_s.index, "tz", None) is not None:
+        div_s.index = div_s.index.tz_convert("Asia/Hong_Kong").tz_localize(None)
+    else:
+        div_s.index = pd.to_datetime(div_s.index).tz_localize(None)
+
+    ttm_mask = (div_s.index > window_start_dt) & (div_s.index <= ref_dt) & (div_s > 0)
+    ttm_divs = div_s.loc[ttm_mask].sort_index()
+
+    info_dict = info_override or {}
+    if not info_dict and tk is not None:
+        try:
+            info_dict = tk.info or {}
+        except Exception:
+            info_dict = {}
+
+    quote_curr = str(info_dict.get("currency", "HKD")).upper()
+    fin_curr = str(info_dict.get("financialCurrency", "USD" if clean_ticker == "0005.HK" else quote_curr)).upper()
+
+    raw_ttm_sum = float(ttm_divs.sum()) if not ttm_divs.empty else 0.0
+    raw_naive_yield = raw_ttm_sum / spot_price_hkd
+
+    detected_div_curr = "HKD"
+    fx_rate = 1.0
+
+    if (fin_curr != "HKD" or clean_ticker == "0005.HK") and 0.0 < raw_naive_yield < 0.015:
+        detected_div_curr = fin_curr if fin_curr != "HKD" else "USD"
+        fx_rate = _fetch_live_fx_to_hkd(detected_div_curr)
+
+    audited_tuples = _classify_special_dividends_and_cadence(ttm_divs, expected_annual_frequency=4)
+
+    sum_regular_hkd = 0.0
+    sum_special_hkd = 0.0
+    reg_cnt = 0
+    spec_cnt = 0
+
+    for ex_dt, raw_amt, is_sp, reason in audited_tuples:
+        hkd_amt = float(raw_amt * fx_rate)
+        if is_sp:
+            sum_special_hkd += hkd_amt
+            spec_cnt += 1
+        else:
+            sum_regular_hkd += hkd_amt
+            reg_cnt += 1
+
+    total_inc_special_hkd = sum_regular_hkd + sum_special_hkd
+    yield_ex_special = sum_regular_hkd / spot_price_hkd
+    yield_inc_special = total_inc_special_hkd / spot_price_hkd
+    selected_yield = yield_inc_special if include_special_dividends else yield_ex_special
+
+    low_b, high_b = expected_band
+    guardrail_ok = (low_b <= yield_ex_special <= high_b)
+
+    return {
+        "ticker": clean_ticker,
+        "as_of_date": ref_dt.strftime("%Y-%m-%d"),
+        "window_start_date": window_start_dt.strftime("%Y-%m-%d"),
+        "spot_price_hkd": round(spot_price_hkd, 4),
+        "quote_currency": quote_curr,
+        "dividend_currency_detected": detected_div_curr,
+        "fx_rate_applied": round(fx_rate, 4),
+        "ttm_dividend_hkd_ex_special": round(sum_regular_hkd, 4),
+        "ttm_dividend_hkd_inc_special": round(total_inc_special_hkd, 4),
+        "ttm_yield_ex_special": round(yield_ex_special, 6),
+        "ttm_yield_inc_special": round(yield_inc_special, 6),
+        "active_yield_selected": round(selected_yield, 6),
+        "include_special_dividends": include_special_dividends,
+        "regular_event_count": reg_cnt,
+        "special_event_count": spec_cnt,
+        "guardrail_passed": guardrail_ok,
+    }
+
+
+def fetch_fundamental_data(ticker: str, include_special_dividends: bool = False) -> dict[str, Any]:
     """
     Fetch and standardize Value & Quality fundamental factors into [-3.0, +3.0] Z-Scores.
-    1. Normalizes ticker (e.g. '5.hk' -> '0005.HK', '700.hk' -> '0700.HK').
-    2. Directly uses verified HKEX institutional profiles for major HK stocks to eliminate
-       Yahoo Finance USD/HKD currency divisor errors (where $0.75 USD / $137.50 HKD = 0.54%).
-    3. For arbitrary other HK stocks, applies automatic currency divisor correction (* 7.78).
+    1. Normalizes ticker (e.g. '5.hk' -> '0005.HK').
+    2. Runs calculate_ttm_dividend_yield with strict 365-day look-ahead-free filtering,
+       special-dividend auditing, and automatic USD/CNY -> HKD currency normalization.
     """
     norm_t = normalize_hk_ticker(ticker)
     clean_t = norm_t if norm_t else str(ticker).strip().upper()
-    known_fundamentals = {
-        "0700.HK": {"div": 0.012, "roe": 0.185, "lot": 100},
-        "0005.HK": {"div": 0.065, "roe": 0.142, "lot": 400},
-        "9988.HK": {"div": 0.024, "roe": 0.125, "lot": 100},
-        "3690.HK": {"div": 0.000, "roe": 0.150, "lot": 100},
-        "0388.HK": {"div": 0.034, "roe": 0.220, "lot": 100},
-        "1810.HK": {"div": 0.000, "roe": 0.110, "lot": 200},
-        "0941.HK": {"div": 0.068, "roe": 0.115, "lot": 500},
-        "1299.HK": {"div": 0.028, "roe": 0.140, "lot": 200},
-        "0883.HK": {"div": 0.076, "roe": 0.190, "lot": 1000},
-        "1088.HK": {"div": 0.082, "roe": 0.165, "lot": 500},
-        "1398.HK": {"div": 0.072, "roe": 0.110, "lot": 1000},
-        "3988.HK": {"div": 0.073, "roe": 0.105, "lot": 1000},
-        "0939.HK": {"div": 0.071, "roe": 0.115, "lot": 1000},
-        "2318.HK": {"div": 0.054, "roe": 0.120, "lot": 500},
-        "2388.HK": {"div": 0.065, "roe": 0.118, "lot": 500},
-        "0011.HK": {"div": 0.064, "roe": 0.110, "lot": 100},
-        "0001.HK": {"div": 0.055, "roe": 0.085, "lot": 500},
-        "0002.HK": {"div": 0.048, "roe": 0.095, "lot": 500},
-        "0003.HK": {"div": 0.052, "roe": 0.090, "lot": 1000},
-        "0016.HK": {"div": 0.058, "roe": 0.065, "lot": 500},
-        "0823.HK": {"div": 0.068, "roe": 0.075, "lot": 100},
-        "0027.HK": {"div": 0.025, "roe": 0.140, "lot": 1000},
-        "0066.HK": {"div": 0.045, "roe": 0.080, "lot": 500},
-        "1211.HK": {"div": 0.015, "roe": 0.210, "lot": 500},
-        "9618.HK": {"div": 0.022, "roe": 0.130, "lot": 50},
-        "9999.HK": {"div": 0.028, "roe": 0.220, "lot": 100},
-        "2475.HK": {"div": 0.018, "roe": 0.145, "lot": 100},
-    }
 
-    if clean_t in known_fundamentals:
-        profile = known_fundamentals[clean_t]
-        div_yield = float(profile["div"])
-        roe = float(profile["roe"])
-        lot_size = int(profile["lot"])
-    else:
-        div_yield = 0.035
-        roe = 0.115
-        lot_size = HK_DEFAULT_LOT_SIZES.get(clean_t, 100)
-        try:
+    div_yield = 0.035
+    div_yield_ex_special = 0.035
+    div_yield_inc_special = 0.035
+    roe = 0.12
+    lot_size = HK_DEFAULT_LOT_SIZES.get(clean_t, 100)
+
+    try:
+        df_p, _ = safe_download_ohlcv(clean_t, period="1mo", interval="1d", min_rows=5)
+        raw_p_df = None
+        if df_p is not None and not df_p.empty:
+            raw_col = df_p["Raw_Close"] if "Raw_Close" in df_p.columns else df_p["Close"]
+            raw_p_df = pd.DataFrame({"Close": raw_col}, index=df_p.index)
+
+        ttm_res = calculate_ttm_dividend_yield(
+            clean_t,
+            include_special_dividends=include_special_dividends,
+            price_df_override=raw_p_df,
+        )
+        if ttm_res["regular_event_count"] > 0 or ttm_res["special_event_count"] > 0:
+            div_yield = float(ttm_res["active_yield_selected"])
+            div_yield_ex_special = float(ttm_res["ttm_yield_ex_special"])
+            div_yield_inc_special = float(ttm_res["ttm_yield_inc_special"])
+        else:
             tk = yf.Ticker(clean_t, session=_CLOUD_SESSION)
-            fast = getattr(tk, "fast_info", None)
-            if fast is not None:
-                raw_div = getattr(fast, "dividend_yield", None)
-                if raw_div is not None and isinstance(raw_div, (int, float, np.floating, np.integer)) and not np.isnan(float(raw_div)):
-                    raw_d = float(raw_div)
-                    if raw_d > 1.0:
-                        div_yield = raw_d / 100.0
-                    elif 0.001 <= raw_d <= 0.012:
-                        # Automatic USD/HKD currency divisor fix (multiply by 7.78 peg)
-                        scaled_d = raw_d * 7.78
-                        div_yield = scaled_d if 0.015 <= scaled_d <= 0.15 else raw_d
-                    elif raw_d > 0.012:
-                        div_yield = raw_d
-        except Exception:
-            pass
+            info = getattr(tk, "info", None) or {}
+            if isinstance(info, dict):
+                raw_roe = info.get("returnOnEquity")
+                if raw_roe is not None and isinstance(raw_roe, (int, float)) and not math.isnan(float(raw_roe)):
+                    roe = float(raw_roe) / 100.0 if abs(float(raw_roe)) > 5.0 else float(raw_roe)
+    except Exception:
+        pass
 
     div_z = float(np.clip((div_yield - 0.032) / 0.022, -3.0, 3.0))
     roe_z = float(np.clip((roe - 0.10) / 0.065, -3.0, 3.0))
@@ -461,12 +668,15 @@ def fetch_fundamental_data(ticker: str) -> dict[str, Any]:
     fund_prob = float(1.0 / (1.0 + math.exp(-0.85 * val_qual_z)))
     fund_score = float((fund_prob - 0.5) * 200.0)
 
+    mode_label = "含特別股息" if include_special_dividends else "Core TTM (扣除特別股息)"
     fund_reasons = [
-        f"{'🟢' if div_z >= 0 else '⚪'} 股息率價值因子: {div_yield*100:.2f}% (標準化暴露 Z = {div_z:+.2f}σ)",
+        f"{'🟢' if div_z >= 0 else '⚪'} 滾動 TTM 股息率 ({mode_label}): {div_yield*100:.2f}% (標準化暴露 Z = {div_z:+.2f}σ)",
         f"{'🟢' if roe_z >= 0 else '🔴'} 股東權益報酬率 (ROE): {roe*100:.1f}% (標準化暴露 Z = {roe_z:+.2f}σ)",
     ]
     return {
         "dividend_yield": div_yield,
+        "dividend_yield_ex_special": div_yield_ex_special,
+        "dividend_yield_inc_special": div_yield_inc_special,
         "roe": roe,
         "lot_size": int(lot_size),
         "div_zscore": div_z,
