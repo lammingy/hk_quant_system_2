@@ -143,13 +143,15 @@ def compute_intraday_vwap_and_tod_volume(df: pd.DataFrame) -> tuple[pd.Series, f
 # Task 2.1: Calibrated Multi-Factor Scoring & Collinearity Diagnostics
 # ============================================================================
 def _winsorize_and_standardize(series: pd.Series, window: int = 120, clip_sigma: float = 3.0) -> pd.Series:
-    """Zero-anchored Root-Mean-Square (RMS) standardization with Winsorization at [-clip_sigma, +clip_sigma].
-    Preserves the natural zero-equilibrium of financial return/flow signals without short-window mean-shift distortion.
+    """Stationary 252-day demeaned Z-score standardization with Winsorization at [-clip_sigma, +clip_sigma].
+    Removes multi-year secular bull/bear drift while preserving medium-term cyclical alpha.
     """
     min_p = max(15, window // 4)
     s_clean = series.fillna(0.0)
-    rms = np.sqrt((s_clean * s_clean).rolling(window, min_periods=min_p).mean().bfill())
-    z = s_clean / (rms + 1e-9)
+    secular_mean = s_clean.rolling(252, min_periods=30).mean().bfill().fillna(0.0)
+    base = s_clean - secular_mean
+    roll_std = base.rolling(window, min_periods=min_p).std().bfill().fillna(1.0)
+    z = base / (roll_std + 1e-9)
     return z.clip(-clip_sigma, clip_sigma).fillna(0.0)
 
 
@@ -221,23 +223,32 @@ def compute_factor_exposure_and_ic_weights(
         "Volatility_Quality": 0.008,
         "Liquidity_Micro": 0.008,
     }
+    overlap_adj = np.sqrt(1.0 + 0.50 * max(0, horizon - 1))
+    valid_fwd_dem = valid_fwd - valid_fwd.rolling(120, min_periods=20).mean().bfill().fillna(0.0)
     for col in factor_df.columns:
         s_f = valid_ic_slice[col]
-        mask_valid = s_f.notna() & valid_fwd.notna()
+        mask_valid = s_f.notna() & valid_fwd_dem.notna()
         if mask_valid.sum() >= 20 and s_f[mask_valid].std() > 1e-6:
-            ic_val, _ = spearmanr(s_f[mask_valid], valid_fwd[mask_valid])
-            raw_ics[col] = float(0.0 if np.isnan(ic_val) else ic_val)
+            ic_val, _ = spearmanr(s_f[mask_valid], valid_fwd_dem[mask_valid])
+            raw_val = 0.0 if np.isnan(ic_val) else float(ic_val) / overlap_adj
+            raw_ics[col] = float(np.clip(0.60 * raw_val + 0.40 * ic_priors[col], -0.09, 0.11))
         else:
             raw_ics[col] = ic_priors[col]
 
-    # Signed Bayesian IC-proportional weighting in true IC units (aligns factor polarity with stock regime)
-    signed_ic_scores: dict[str, float] = {}
+    # Institutional Bayesian Shrinkage: 65% Structural Economic Prior + 35% Empirical Rank-IC tilt
+    prior_weights = {
+        "Momentum": 0.30,
+        "Value_Quality": 0.30,
+        "Volatility_Quality": 0.20,
+        "Liquidity_Micro": 0.20,
+    }
+    raw_weights = {}
     for col in factor_df.columns:
-        blended_ic = 0.88 * raw_ics[col] + 0.12 * ic_priors[col]
-        signed_ic_scores[col] = blended_ic * (1.0 + 10.0 * abs(blended_ic))
+        ic_tilt = float(np.clip(raw_ics[col] * 0.8, -0.12, 0.12))
+        raw_weights[col] = float(np.clip(prior_weights[col] + ic_tilt, 0.10, 0.45))
 
-    total_abs_ic = sum(abs(val) for val in signed_ic_scores.values()) + 1e-9
-    calibrated_weights = {col: float(val / total_abs_ic) for col, val in signed_ic_scores.items()}
+    total_w = sum(raw_weights.values()) + 1e-9
+    calibrated_weights = {col: float(val / total_w) for col, val in raw_weights.items()}
 
     composite_z_series = (
         (

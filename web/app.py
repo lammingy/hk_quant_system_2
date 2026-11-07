@@ -206,13 +206,13 @@ def _compute_single_portal_card(code: str, name: str, f_host: str, f_port: int) 
         prob_pct = float(trend_res.get("up_prob", 0.5) * 100.0)
         z_val = float(trend_res.get("composite_zscore", 0.0))
         if prob_pct >= 58.0:
-            tag, color = "看多趨勢", "#34D399"
+            tag, color = "看多趨勢", "#047857"
         elif prob_pct <= 42.0:
-            tag, color = "弱勢防禦", "#FB7185"
+            tag, color = "弱勢防禦", "#B91C1C"
         elif prob_pct >= 52.0:
-            tag, color = "偏多震盪", "#34D399"
+            tag, color = "偏多震盪", "#047857"
         else:
-            tag, color = "區間震盪", "#38BDF8"
+            tag, color = "區間震盪", "#0284C7"
         return {
             "code": norm_c,
             "name": name,
@@ -229,7 +229,7 @@ def _compute_single_portal_card(code: str, name: str, f_host: str, f_port: int) 
         "prob": 50.0,
         "z": 0.0,
         "tag": "即時連線中",
-        "color": "#38BDF8",
+        "color": "#0284C7",
     }
 
 
@@ -478,16 +478,16 @@ if not st.session_state.entered_main_terminal:
         cards_html += f"""
         <div class="portal-stock-card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <span style="font-weight:700; color:#F8FAFC; font-size:0.98rem;">{item['name']}</span>
-                <span class="mono-num" style="color:#94A3B8; font-size:0.80rem;">{item['code']}</span>
+                <span style="font-weight:700; color:#FFFFFF; font-size:0.98rem;">{item['name']}</span>
+                <span class="mono-num" style="color:#CBD5E1; font-size:0.80rem;">{item['code']}</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px;">
                 <span class="mono-num" style="font-size:1.45rem; color:#FFFFFF;">${item['price']:.2f}</span>
-                <span style="font-size:0.78rem; padding:3px 9px; border-radius:999px; background:rgba(56,189,248,0.12); color:{item['color']}; border:1px solid {item['color']}55; font-weight:600;">
+                <span style="font-size:0.78rem; padding:3px 9px; border-radius:999px; background:rgba(56,189,248,0.15); color:{item['color']}; border:1px solid {item['color']}55; font-weight:600;">
                     {item['tag']}
                 </span>
             </div>
-            <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:#94A3B8; margin-bottom:4px;">
+            <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:#CBD5E1; margin-bottom:4px;">
                 <span>AI 上漲機率預測</span>
                 <span class="mono-num" style="color:{item['color']};">{item['prob']:.1f}% ({item['z']:+.2f}σ)</span>
             </div>
@@ -509,17 +509,17 @@ if not st.session_state.entered_main_terminal:
                 結合<strong>無未來函數統計校準多因子模型</strong>、<strong>港交所真實微觀結構與市場衝擊滑價</strong>，以及<strong>短中長線全週期歷史勝率檢驗</strong>，將複雜的機構量化分析化繁為簡，為您呈現清晰、直觀、零程式碼干擾的港股智慧決策體驗。
             </div>
             <div style="display:flex; justify-content:center; flex-wrap:wrap; gap:18px; margin-bottom:26px;">
-                <div style="background:rgba(15,23,42,0.85); border:1px solid rgba(56,189,248,0.3); border-radius:12px; padding:10px 20px;">
-                    <span style="color:#94A3B8; font-size:0.82rem;">恆生指數 HSI：</span>
-                    <span class="mono-num" style="font-size:1.1rem; color:#F8FAFC;">{macro_info['hsi_close']:,.0f}</span>
-                    <span class="mono-num" style="color:{'#34D399' if hsi_dist>=0 else '#FB7185'}; font-size:0.86rem;"> ({hsi_dist*100:+.1f}% vs 牛熊線)</span>
+                <div style="background:#161F30; border:1px solid rgba(56,189,248,0.3); border-radius:12px; padding:10px 20px;">
+                    <span style="color:#CBD5E1; font-size:0.82rem;">恆生指數 HSI：</span>
+                    <span class="mono-num" style="font-size:1.1rem; color:#FFFFFF;">{macro_info['hsi_close']:,.0f}</span>
+                    <span class="mono-num" style="color:{'#047857' if hsi_dist>=0 else '#B91C1C'}; font-size:0.86rem;"> ({hsi_dist*100:+.1f}% vs 牛熊線)</span>
                 </div>
-                <div style="background:rgba(15,23,42,0.85); border:1px solid rgba(16,185,129,0.3); border-radius:12px; padding:10px 20px;">
-                    <span style="color:#94A3B8; font-size:0.82rem;">大盤多頭情緒溫度：</span>
+                <div style="background:#161F30; border:1px solid rgba(16,185,129,0.3); border-radius:12px; padding:10px 20px;">
+                    <span style="color:#CBD5E1; font-size:0.82rem;">大盤多頭情緒溫度：</span>
                     <span class="mono-num" style="font-size:1.1rem; color:#34D399;">{hsi_prob_pct:.1f}%</span>
                 </div>
-                <div style="background:rgba(15,23,42,0.85); border:1px solid rgba(168,85,247,0.3); border-radius:12px; padding:10px 20px;">
-                    <span style="color:#94A3B8; font-size:0.82rem;">當前選中分析標的：</span>
+                <div style="background:#161F30; border:1px solid rgba(168,85,247,0.3); border-radius:12px; padding:10px 20px;">
+                    <span style="color:#CBD5E1; font-size:0.82rem;">當前選中分析標的：</span>
                     <span class="mono-num" style="font-size:1.1rem; color:#38BDF8;">{active_ticker}</span>
                 </div>
             </div>
@@ -544,7 +544,7 @@ if not st.session_state.entered_main_terminal:
             """
             <div class="bento-card">
                 <div class="bento-title"><span>⚡ 01 · 日內當沖戰術</span><span style="color:#38BDF8;">即時買賣點</span></div>
-                <div style="font-size:0.86rem; color:#CBD5E1; line-height:1.55;">
+                <div style="font-size:0.86rem; color:#E2E8F0; line-height:1.55;">
                     嚴格區分「上一根確認收盤價」與「次根開盤實際成交價」，每日 09:30 重置日內均價線，並自動計算港交所印花稅與最佳止損止盈位。
                 </div>
             </div>
@@ -556,7 +556,7 @@ if not st.session_state.entered_main_terminal:
             """
             <div class="bento-card">
                 <div class="bento-title"><span>🔍 02 · 趨勢機率透視</span><span style="color:#34D399;">多因子校準</span></div>
-                <div style="font-size:0.86rem; color:#CBD5E1; line-height:1.55;">
+                <div style="font-size:0.86rem; color:#E2E8F0; line-height:1.55;">
                     捨棄主觀硬編碼加減分，改以統計機率模型輸出 0%–100% 上漲機率與四大核心因子（動量、價值、低波、流動性）獨立貢獻度。
                 </div>
             </div>
@@ -567,8 +567,8 @@ if not st.session_state.entered_main_terminal:
         st.markdown(
             """
             <div class="bento-card">
-                <div class="bento-title"><span>📊 03 · 穩健組合調倉</span><span style="color:#F59E0B;">去噪與風控</span></div>
-                <div style="font-size:0.86rem; color:#CBD5E1; line-height:1.55;">
+                <div class="bento-title"><span>📊 03 · 穩健組合調倉</span><span style="color:#FBBF24;">去噪與風控</span></div>
+                <div style="font-size:0.86rem; color:#E2E8F0; line-height:1.55;">
                     內建停牌遮罩與矩陣去噪技術，自動排除上市未滿 120 日之新股，生成符合港股每手股數與大額拆單提示的實盤調倉單。
                 </div>
             </div>
@@ -580,7 +580,7 @@ if not st.session_state.entered_main_terminal:
             """
             <div class="bento-card">
                 <div class="bento-title"><span>🎯 04 · 歷史勝率檢驗</span><span style="color:#A855F7;">全週期回測</span></div>
-                <div style="font-size:0.86rem; color:#CBD5E1; line-height:1.55;">
+                <div style="font-size:0.86rem; color:#E2E8F0; line-height:1.55;">
                     自由切換未來 5 日、10 日、1 個月、3 個月、半年至 1 年預測週期，一鍵檢視歷史方向勝率、五分位數收益階梯與假陽性風險。
                 </div>
             </div>
@@ -611,7 +611,7 @@ st.markdown(
         <div class="macro-item">
             <span>恆生指數 HSI:</span>
             <span class="mono-num">{macro_info['hsi_close']:,.0f}</span>
-            <span class="mono-num" style="color: {'#34D399' if hsi_dist >= 0 else '#FB7185'};">({hsi_dist*100:+.1f}% vs 200MA)</span>
+            <span class="mono-num" style="color: {'#047857' if hsi_dist >= 0 else '#B91C1C'};">({hsi_dist*100:+.1f}% vs 200MA)</span>
         </div>
         <div class="macro-item">
             <span>US 10Y 殖利率:</span>
@@ -702,7 +702,7 @@ with tab1:
                     </div>
                     <div class="exec-cell">
                         <div class="exec-label">日內 VWAP 均價 / Wilder's RSI (14)</div>
-                        <div class="exec-val" style="color:#F59E0B;">${day_res['vwap']:.2f} <span style="font-size:0.84rem; color:#F8FAFC;">| RSI {day_res['rsi']:.1f}</span></div>
+                        <div class="exec-val" style="color:#FBBF24;">${day_res['vwap']:.2f} <span style="font-size:0.84rem; color:#FFFFFF;">| RSI {day_res['rsi']:.1f}</span></div>
                     </div>
                     <div class="exec-cell">
                         <div class="exec-label">ATR 止損價 (以實際撮合價計算並對齊 Tick)</div>
@@ -713,7 +713,7 @@ with tab1:
                         <div class="exec-val" style="color: #34D399;">${day_res['take_profit_price']:.2f}</div>
                     </div>
                 </div>
-                <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(148,163,184,0.12); font-size:0.80rem; color:#94A3B8; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                <div style="margin-top:12px; padding-top:10px; border-top:1px solid #334155; font-size:0.80rem; color:#CBD5E1; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
                     <span>印花稅(向上取整): <strong class="mono-num">${mc['stamp_duty_hkd']:.0f}</strong></span>
                     <span>證監+會財+交易所費: <strong class="mono-num">${mc['sfc_levy_hkd']+mc['afrc_levy_hkd']+mc['hkex_fee_hkd']:.2f}</strong></span>
                     <span>經紀佣金: <strong class="mono-num">${mc['broker_commission_hkd']:.1f}</strong></span>
@@ -817,7 +817,7 @@ with tab1:
                     y=df_d["Vol_MA20"],
                     mode="lines",
                     name="20期均量",
-                    line=dict(color="#38BDF8", width=1.4),
+                    line=dict(color="#0284C7", width=1.4),
                 ),
                 row=2,
                 col=1,
@@ -841,13 +841,13 @@ with tab1:
         fig_3p.update_layout(
             height=620,
             xaxis_rangeslider_visible=False,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(11,15,25,0.72)",
-            font=dict(color="#CBD5E1", size=11),
+            paper_bgcolor="#161F30",
+            plot_bgcolor="#0B0F19",
+            font=dict(color="#FFFFFF", size=12),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=15, r=15, t=35, b=15),
         )
-        fig_3p.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
+        fig_3p.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
         if day_res["interval"] in ("5m", "15m"):
             fig_3p.update_xaxes(
                 rangebreaks=[
@@ -856,7 +856,7 @@ with tab1:
                     dict(bounds=[12, 13], pattern="hour"),
                 ]
             )
-        fig_3p.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
+        fig_3p.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
         st.plotly_chart(fig_3p, use_container_width=True)
 
         # Level 2 Order Book & Market Depth Component (Bid 1~10 & Ask 1~10)
@@ -868,8 +868,8 @@ with tab1:
             lot_size=int(day_res["lot_size"]),
         )
 
-        ob_badge_color = "#34D399" if ob_res["is_live"] else "#94A3B8"
-        obi_color = "#34D399" if ob_res["order_book_imbalance"] >= 0 else "#FB7185"
+        ob_badge_color = "#047857" if ob_res["is_live"] else "#94A3B8"
+        obi_color = "#047857" if ob_res["order_book_imbalance"] >= 0 else "#B91C1C"
         obi_text = "買盤佔優" if ob_res["order_book_imbalance"] >= 0 else "賣盤佔優"
 
         st.markdown(f"""
@@ -880,8 +880,8 @@ with tab1:
                     {ob_res["source"]}
                 </span>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; font-size: 0.82rem; color: #94A3B8;">
-                <div>最優買賣價差: <strong class="mono-num" style="color: #F8FAFC;">${ob_res["spread"]:.3f}</strong> ({ob_res["spread_ticks"]} Tick / {ob_res["spread_bps"]:.1f} bps)</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; font-size: 0.82rem; color: #CBD5E1;">
+                <div>最優買賣價差: <strong class="mono-num" style="color: #FFFFFF;">${ob_res["spread"]:.3f}</strong> ({ob_res["spread_ticks"]} Tick / {ob_res["spread_bps"]:.1f} bps)</div>
                 <div>微觀中間價 (Micro-Price): <strong class="mono-num" style="color: #38BDF8;">${ob_res["micro_price"]:.3f}</strong></div>
                 <div>盤口力量不平衡 (OBI): <strong class="mono-num" style="color: {obi_color};">{ob_res["order_book_imbalance"]*100:+.1f}% ({obi_text})</strong></div>
                 <div>行情接收時間: <strong class="mono-num">{ob_res["update_time"]}</strong></div>
@@ -967,7 +967,7 @@ with tab2:
             )
         with t2_right:
             bullets_html = "".join(
-                f'<div style="padding: 6px 0; border-bottom: 1px solid rgba(148,163,184,0.08); font-size: 0.84rem; color: #CBD5E1;">{r}</div>'
+                f'<div style="padding: 6px 0; border-bottom: 1px solid rgba(148,163,184,0.18); font-size: 0.84rem; color: #E2E8F0;">{r}</div>'
                 for r in trend_res["reasons"]
             )
             st.markdown(
@@ -1021,8 +1021,8 @@ with tab2:
             )
             fig_fcorr.update_layout(
                 height=245,
-                paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#CBD5E1", size=11),
+                paper_bgcolor="#161F30",
+                font=dict(color="#FFFFFF", size=12),
                 margin=dict(l=10, r=10, t=10, b=10),
                 coloraxis_showscale=False,
             )
@@ -1062,7 +1062,7 @@ with tab2:
                     y=df_h["SMA50"],
                     mode="lines",
                     name="SMA 50 (中線)",
-                    line=dict(color="#38BDF8", width=1.8),
+                    line=dict(color="#0284C7", width=1.8),
                 ),
                 row=1,
                 col=1,
@@ -1099,14 +1099,14 @@ with tab2:
         fig_t2.update_layout(
             height=540,
             xaxis_rangeslider_visible=False,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(11,15,25,0.72)",
-            font=dict(color="#CBD5E1", size=11),
+            paper_bgcolor="#161F30",
+            plot_bgcolor="#0B0F19",
+            font=dict(color="#FFFFFF", size=12),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=15, r=15, t=35, b=15),
         )
-        fig_t2.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
-        fig_t2.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
+        fig_t2.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
+        fig_t2.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
         st.plotly_chart(fig_t2, use_container_width=True)
 
 
@@ -1120,7 +1120,7 @@ with tab3:
             <span>💼 投資組合持倉管理與多標的配置工作台</span>
             <span style="color: #38BDF8;">支援點選預設範本、一鍵加入任意港股，或雙擊下方表格直接修改</span>
         </div>
-        <div style="font-size:0.84rem; color:#94A3B8; margin-top:4px;">
+        <div style="font-size:0.84rem; color:#CBD5E1; margin-top:4px;">
             💡 <strong>如何更換持倉組合？</strong> 您可以：① 點選下方 4 組<strong>精選範本</strong>一鍵切換；② 在輸入框輸入代號（如 1810.HK）並點擊<strong>加入持倉</strong>；③ 展開下方表格<strong>直接雙擊代號或股數修改</strong>，或勾選刪除。修改將自動即時同步。
         </div>
     </div>
@@ -1334,14 +1334,14 @@ with tab3:
 
                 fig_bt.update_layout(
                     height=460,
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(11,15,25,0.72)",
-                    font=dict(color="#CBD5E1", size=11),
+                    paper_bgcolor="#161F30",
+                    plot_bgcolor="#0B0F19",
+                    font=dict(color="#FFFFFF", size=12),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                     margin=dict(l=15, r=15, t=35, b=15),
                 )
-                fig_bt.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
-                fig_bt.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
+                fig_bt.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
+                fig_bt.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
                 st.plotly_chart(fig_bt, use_container_width=True)
 
         with chart_right:
@@ -1371,15 +1371,15 @@ with tab3:
                         x=df_w["目標權重 (%)"],
                         orientation="h",
                         name=f"{alloc_method.upper()} 目標權重",
-                        marker_color="#38BDF8",
+                        marker_color="#0284C7",
                     )
                 )
                 fig_w.update_layout(
                     barmode="group",
                     height=395,
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(11,15,25,0.72)",
-                    font=dict(color="#CBD5E1", size=11),
+                    paper_bgcolor="#161F30",
+                    plot_bgcolor="#0B0F19",
+                    font=dict(color="#FFFFFF", size=12),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                     margin=dict(l=10, r=10, t=25, b=10),
                 )
@@ -1392,8 +1392,8 @@ with tab3:
                 )
                 fig_heat.update_layout(
                     height=395,
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="#CBD5E1", size=11),
+                    paper_bgcolor="#161F30",
+                    font=dict(color="#FFFFFF", size=12),
                     margin=dict(l=10, r=10, t=20, b=10),
                     coloraxis_showscale=False,
                 )
@@ -1442,7 +1442,7 @@ with tab3:
 
         with diag_col:
             warn_items_html = "".join(
-                f'<div style="padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,0.10); font-size: 0.84rem; color: #E2E8F0;">{w}</div>'
+                f'<div style="padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,0.18); font-size: 0.84rem; color: #FFFFFF;">{w}</div>'
                 for w in health_res["warnings"]
             )
             st.markdown(
@@ -1597,7 +1597,7 @@ with tab4:
         q_df = pd.DataFrame(acc_res["quantile_summary"])
 
         with q_left:
-            bar_colors = ["#F43F5E", "#FB923C", "#94A3B8", "#38BDF8", "#10B981"]
+            bar_colors = ["#F43F5E", "#FB923C", "#94A3B8", "#0284C7", "#10B981"]
             fig_qbar = go.Figure(
                 go.Bar(
                     x=q_df["quantile"],
@@ -1610,14 +1610,14 @@ with tab4:
             fig_qbar.update_layout(
                 title=f"📊 五分位數單調性檢驗 (Q1 至 Q5 前瞻 {acc_res['forward_horizon']} 日平均收益 | 多空差 {acc_res['q5_q1_spread_pct']:+.2f}%)",
                 height=390,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(11,15,25,0.72)",
-                font=dict(color="#CBD5E1", size=11),
+                paper_bgcolor="#161F30",
+                plot_bgcolor="#0B0F19",
+                font=dict(color="#FFFFFF", size=12),
                 yaxis_title=f"前瞻 {acc_res['forward_horizon']} 日平均收益率 (%)",
                 margin=dict(l=15, r=15, t=45, b=15),
             )
             fig_qbar.update_xaxes(showgrid=False)
-            fig_qbar.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
+            fig_qbar.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
             st.plotly_chart(fig_qbar, use_container_width=True)
 
         with q_right:
@@ -1626,7 +1626,7 @@ with tab4:
                 "Q1 (極空)": "#F43F5E",
                 "Q2 (偏空)": "#FB923C",
                 "Q3 (中性)": "#94A3B8",
-                "Q4 (偏多)": "#38BDF8",
+                "Q4 (偏多)": "#0284C7",
                 "Q5 (極多)": "#10B981",
             }
             for q_name, nav_s in acc_res["quantile_cum_curves"].items():
@@ -1636,21 +1636,21 @@ with tab4:
                         y=nav_s.values,
                         mode="lines",
                         name=q_name,
-                        line=dict(color=q_palette.get(q_name, "#38BDF8"), width=2.4 if q_name in ("Q5 (極多)", "Q1 (極空)") else 1.4),
+                        line=dict(color=q_palette.get(q_name, "#0284C7"), width=2.4 if q_name in ("Q5 (極多)", "Q1 (極空)") else 1.4),
                     )
                 )
             fig_qnav.update_layout(
                 title=f"📈 分位數分組累積淨值曲線 (單調性秩相關係數 = {acc_res['monotonicity_score']:+.2f})",
                 height=390,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(11,15,25,0.72)",
-                font=dict(color="#CBD5E1", size=11),
+                paper_bgcolor="#161F30",
+                plot_bgcolor="#0B0F19",
+                font=dict(color="#FFFFFF", size=12),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 yaxis_title="累積淨值 (基準 = 1.0)",
                 margin=dict(l=15, r=15, t=45, b=15),
             )
-            fig_qnav.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
-            fig_qnav.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
+            fig_qnav.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
+            fig_qnav.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
             st.plotly_chart(fig_qnav, use_container_width=True)
 
         # Row 3: Scatter Prediction Plot (with Regression Line & R^2) + Confusion Matrix & MAE/MFE
@@ -1692,16 +1692,16 @@ with tab4:
             fig_sc.update_layout(
                 title=f"🎯 模型預測得分 vs 未來 {acc_res['forward_horizon']} 日實際漲跌幅散點圖 (R² = {reg['r_squared']:.3f})",
                 height=395,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(11,15,25,0.72)",
-                font=dict(color="#CBD5E1", size=11),
+                paper_bgcolor="#161F30",
+                plot_bgcolor="#0B0F19",
+                font=dict(color="#FFFFFF", size=12),
                 xaxis_title="模型預測綜合得分 (-100 至 +100)",
                 yaxis_title=f"未來 {acc_res['forward_horizon']} 日實際漲跌幅 (%)",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 margin=dict(l=15, r=15, t=45, b=15),
             )
-            fig_sc.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
-            fig_sc.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.07)")
+            fig_sc.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
+            fig_sc.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,0.15)")
             st.plotly_chart(fig_sc, use_container_width=True)
 
         with sc_right:
@@ -1727,9 +1727,9 @@ with tab4:
                 fig_exc.update_layout(
                     barmode="overlay",
                     height=330,
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(11,15,25,0.72)",
-                    font=dict(color="#CBD5E1", size=11),
+                    paper_bgcolor="#161F30",
+                    plot_bgcolor="#0B0F19",
+                    font=dict(color="#FFFFFF", size=12),
                     xaxis_title="持倉期間最大價格偏離幅度 (%)",
                     yaxis_title="樣本頻次",
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -1749,19 +1749,19 @@ with tab4:
                         <div class="exec-grid">
                             <div class="exec-cell">
                                 <div class="exec-label">真陽性 (TP · 看多且獲利未停損)</div>
-                                <div class="exec-val" style="color:#34D399;">{cm['tp']} 次 <span style="font-size:0.78rem; color:#94A3B8;">(精確率 {cm['precision']*100:.1f}%)</span></div>
+                                <div class="exec-val" style="color:#34D399;">{cm['tp']} 次 <span style="font-size:0.78rem; color:#CBD5E1;">(精確率 {cm['precision']*100:.1f}%)</span></div>
                             </div>
                             <div class="exec-cell">
                                 <div class="exec-label">假陽性 (FP · 看多但虧損或觸發停損)</div>
-                                <div class="exec-val" style="color:#FB7185;">{cm['fp']} 次 <span style="font-size:0.78rem; color:#94A3B8;">(FPR {cm['fpr']*100:.1f}%)</span></div>
+                                <div class="exec-val" style="color:#FB7185;">{cm['fp']} 次 <span style="font-size:0.78rem; color:#CBD5E1;">(FPR {cm['fpr']*100:.1f}%)</span></div>
                             </div>
                             <div class="exec-cell">
                                 <div class="exec-label">真陰性 (TN · 看空成功規避下跌)</div>
-                                <div class="exec-val" style="color:#38BDF8;">{cm['tn']} 次 <span style="font-size:0.78rem; color:#94A3B8;">(停損率 {cm['stop_trigger_rate']*100:.1f}%)</span></div>
+                                <div class="exec-val" style="color:#38BDF8;">{cm['tn']} 次 <span style="font-size:0.78rem; color:#CBD5E1;">(停損率 {cm['stop_trigger_rate']*100:.1f}%)</span></div>
                             </div>
                             <div class="exec-cell">
                                 <div class="exec-label">假陰性 (FN · 看空但標的逆勢上漲)</div>
-                                <div class="exec-val" style="color:#F59E0B;">{cm['fn']} 次 <span style="font-size:0.78rem; color:#94A3B8;">(召回率 {cm['recall']*100:.1f}%)</span></div>
+                                <div class="exec-val" style="color:#FBBF24;">{cm['fn']} 次 <span style="font-size:0.78rem; color:#CBD5E1;">(召回率 {cm['recall']*100:.1f}%)</span></div>
                             </div>
                         </div>
                     </div>
