@@ -20,52 +20,29 @@ from scipy.optimize import minimize
 from scipy.spatial.distance import squareform
 from scipy.stats import kurtosis, norm, skew
 
-try:
-    from hk_quant_system.config.settings import (
-        DEFAULT_ALMGREN_GAMMA,
-        DEFAULT_BROKER_COMM_RATE,
-        DEFAULT_MIN_BROKER_COMM_HKD,
-        HK_DEFAULT_LOT_SIZES,
-        MIN_REQUIRED_DAILY_BARS,
-        calculate_hkex_microstructure_cost,
-        get_candidate_tickers,
-        get_hk_tick_size,
-        is_hk_short_eligible,
-        load_portfolio_config,
-        normalize_hk_ticker,
-        round_to_hk_tick,
-    )
-    from hk_quant_system.data.futu_gateway import check_futu_opend_connection, fetch_realtime_spot_price
-    from hk_quant_system.data.loader import (
-        compute_active_daily_returns,
-        fetch_fundamental_data,
-        fetch_hk_macro_regime,
-        log_snapshot_to_db,
-        safe_download_ohlcv,
-    )
-except (ImportError, ValueError):
-    from config.settings import (
-        DEFAULT_ALMGREN_GAMMA,
-        DEFAULT_BROKER_COMM_RATE,
-        DEFAULT_MIN_BROKER_COMM_HKD,
-        HK_DEFAULT_LOT_SIZES,
-        MIN_REQUIRED_DAILY_BARS,
-        calculate_hkex_microstructure_cost,
-        get_candidate_tickers,
-        get_hk_tick_size,
-        is_hk_short_eligible,
-        load_portfolio_config,
-        normalize_hk_ticker,
-        round_to_hk_tick,
-    )
-    from data.futu_gateway import check_futu_opend_connection, fetch_realtime_spot_price
-    from data.loader import (
-        compute_active_daily_returns,
-        fetch_fundamental_data,
-        fetch_hk_macro_regime,
-        log_snapshot_to_db,
-        safe_download_ohlcv,
-    )
+from config.settings import (
+    DEFAULT_ALMGREN_GAMMA,
+    DEFAULT_BROKER_COMM_RATE,
+    DEFAULT_MIN_BROKER_COMM_HKD,
+    HK_DEFAULT_LOT_SIZES,
+    MIN_REQUIRED_DAILY_BARS,
+    calculate_hkex_microstructure_cost,
+    get_candidate_tickers,
+    get_hk_tick_size,
+    is_hk_short_eligible,
+    load_portfolio_config,
+    normalize_hk_ticker,
+    round_to_hk_tick,
+)
+from data.futu_gateway import check_futu_opend_connection, fetch_realtime_spot_price
+from data.loader import (
+    compute_active_daily_returns,
+    fetch_fundamental_data,
+    fetch_hk_macro_regime,
+    log_snapshot_to_db,
+    safe_download_ohlcv,
+)
+
 
 def compute_ledoit_wolf_cov(returns_df: pd.DataFrame) -> tuple[np.ndarray, float]:
     """
@@ -603,10 +580,7 @@ def analyze_portfolio_health(
         min_broker_comm_hkd=min_broker_comm_hkd,
         almgren_gamma=almgren_gamma,
     )
-    try:
-        from hk_quant_system.engine.backtest import run_strategy_backtest
-    except (ImportError, ValueError):
-        from engine.backtest import run_strategy_backtest
+    from engine.backtest import run_strategy_backtest
     backtest_res = run_strategy_backtest(
         adj_data,
         lookback=60,

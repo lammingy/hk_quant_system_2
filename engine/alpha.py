@@ -17,56 +17,30 @@ import pandas as pd
 import yfinance as yf
 from scipy.stats import kurtosis, norm, pearsonr, skew, spearmanr
 
-try:
-    from hk_quant_system.config.settings import (
-        DEFAULT_ALMGREN_GAMMA,
-        DEFAULT_BROKER_COMM_RATE,
-        DEFAULT_MIN_BROKER_COMM_HKD,
-        HK_DEFAULT_LOT_SIZES,
-        MIN_REQUIRED_DAILY_BARS,
-        calculate_hkex_microstructure_cost,
-        get_candidate_tickers,
-        get_hk_tick_size,
-        is_hk_short_eligible,
-        normalize_hk_ticker,
-        round_to_hk_tick,
-    )
-    from hk_quant_system.data.futu_gateway import (
-        check_futu_opend_connection,
-        fetch_realtime_spot_price,
-        get_futu_order_book,
-        get_futu_realtime_quote,
-    )
-    from hk_quant_system.data.loader import (
-        fetch_fundamental_data,
-        fetch_hk_macro_regime,
-        safe_download_ohlcv,
-    )
-except (ImportError, ValueError):
-    from config.settings import (
-        DEFAULT_ALMGREN_GAMMA,
-        DEFAULT_BROKER_COMM_RATE,
-        DEFAULT_MIN_BROKER_COMM_HKD,
-        HK_DEFAULT_LOT_SIZES,
-        MIN_REQUIRED_DAILY_BARS,
-        calculate_hkex_microstructure_cost,
-        get_candidate_tickers,
-        get_hk_tick_size,
-        is_hk_short_eligible,
-        normalize_hk_ticker,
-        round_to_hk_tick,
-    )
-    from data.futu_gateway import (
-        check_futu_opend_connection,
-        fetch_realtime_spot_price,
-        get_futu_order_book,
-        get_futu_realtime_quote,
-    )
-    from data.loader import (
-        fetch_fundamental_data,
-        fetch_hk_macro_regime,
-        safe_download_ohlcv,
-    )
+from config.settings import (
+    DEFAULT_ALMGREN_GAMMA,
+    DEFAULT_BROKER_COMM_RATE,
+    DEFAULT_MIN_BROKER_COMM_HKD,
+    HK_DEFAULT_LOT_SIZES,
+    MIN_REQUIRED_DAILY_BARS,
+    calculate_hkex_microstructure_cost,
+    get_candidate_tickers,
+    get_hk_tick_size,
+    is_hk_short_eligible,
+    normalize_hk_ticker,
+    round_to_hk_tick,
+)
+from data.futu_gateway import (
+    check_futu_opend_connection,
+    fetch_realtime_spot_price,
+    get_futu_order_book,
+    get_futu_realtime_quote,
+)
+from data.loader import (
+    fetch_fundamental_data,
+    fetch_hk_macro_regime,
+    safe_download_ohlcv,
+)
 
 def compute_wilder_rsi(close: pd.Series, period: int = 14) -> pd.Series:
     """Compute standard Wilder's RSI using exponential smoothing (alpha = 1/period)."""
@@ -419,19 +393,18 @@ def generate_day_trading_signal(
         sma_5_dec = float(df['SMA5'].iloc[dec_idx])
         sma_10_dec = float(df['SMA10'].iloc[dec_idx])
 
-        hist_vol_slice = volume.iloc[max(0, len(volume) + dec_idx - 60) : len(volume) + dec_idx + 1]
         dec_vol = float(volume.iloc[dec_idx])
-        vol_pct_rank = float((hist_vol_slice < dec_vol).mean() * 100.0) if hist_vol_slice.sum() > 0 else 50.0
-
         if used_interval in ("5m", "15m"):
             vwap_series, vol_surge_ratio, _ = compute_intraday_vwap_and_tod_volume(df)
             df['VWAP'] = vwap_series
             dec_vwap = float(vwap_series.iloc[dec_idx])
         else:
             vol_20ma_dec = float(df['Vol_MA20'].iloc[dec_idx])
-            vol_surge_ratio = min(dec_vol / (vol_20ma_dec + 1e-9), 20.0) if (vol_20ma_dec > 0 and adv_20d_hkd >= 100_000) else 0.0
+            vol_surge_ratio = min(dec_vol / (vol_20ma_dec + 1e-9), 20.0) if (vol_20ma_dec > 0 and adv_20d_hkd >= 100_000) else 1.0
             df['VWAP'] = df['SMA5']
             dec_vwap = float(df['VWAP'].iloc[dec_idx])
+        # Strictly monotonic log-normal percentile mapping anchored at 1.00x = P50 (eliminates skewness contradiction)
+        vol_pct_rank = float(np.clip(norm.cdf(np.log(max(0.05, vol_surge_ratio)) / 0.55) * 100.0, 1.0, 99.0))
 
         df['ATR_Upper'] = df['VWAP'] + 1.5 * atr_series
         df['ATR_Lower'] = df['VWAP'] - 1.5 * atr_series
@@ -630,18 +603,28 @@ def analyze_stock_trend(ticker: str) -> tuple[dict[str, Any] | None, str | None]
             ic_window=max(252, len(df) - 30),
         )
 
-        composite_z = factor_model["latest_composite_z"]
-        up_prob = factor_model["latest_prob_up"]
-        composite_score = float(np.clip((up_prob - 0.5) * 200.0, -100.0, 100.0))
-
-        st_z = float(np.clip(0.55 * z_20d + 0.45 * z_5d, -3.0, 3.0))
-        st_prob = float(1.0 / (1.0 + math.exp(-0.9 * st_z)))
+        f_latest = factor_model["factor_df"].iloc[dec_idx]
+        # Short-term tactical Z: blends 5D/20D momentum with short-term microstructure & volatility factors
+        st_z = float(np.clip(
+            0.35 * z_20d + 0.25 * z_5d + 0.20 * float(f_latest["Liquidity_Micro"]) + 0.20 * float(f_latest["Volatility_Quality"]),
+            -3.0, 3.0
+        ))
+        st_prob = float(1.0 / (1.0 + math.exp(-0.85 * st_z)))
         short_term_score = float((st_prob - 0.5) * 200.0)
 
-        lt_tech_z = float(np.clip(0.55 * (dist_200ma / 0.12) + 0.45 * (weekly_dist / 0.08), -3.0, 3.0))
-        lt_z = float(np.clip(0.50 * fundamental["val_qual_zscore"] + 0.30 * lt_tech_z + 0.20 * macro["macro_zscore"], -3.0, 3.0))
-        lt_prob = float(1.0 / (1.0 + math.exp(-0.9 * lt_z)))
+        # Long-term strategic Z: blends 200MA/Weekly structure (55%) with fundamental valuation & macro regime (45%)
+        lt_tech_z = float(np.clip(0.65 * (dist_200ma / 0.10) + 0.35 * (weekly_dist / 0.08), -3.0, 3.0))
+        lt_z = float(np.clip(
+            0.55 * lt_tech_z + 0.25 * fundamental["val_qual_zscore"] + 0.10 * float(f_latest["Value_Quality"]) + 0.10 * macro["macro_zscore"],
+            -3.0, 3.0
+        ))
+        lt_prob = float(1.0 / (1.0 + math.exp(-0.85 * lt_z)))
         long_term_score = float((lt_prob - 0.5) * 200.0)
+
+        # Unified Composite Z: 55% Short-Term Tactical + 45% Long-Term Strategic (guarantees mathematical coherence)
+        composite_z = float(np.clip(0.55 * st_z + 0.45 * lt_z, -3.0, 3.0))
+        up_prob = float(1.0 / (1.0 + math.exp(-0.85 * composite_z)))
+        composite_score = float(np.clip((up_prob - 0.5) * 200.0, -100.0, 100.0))
 
         adv_20d_hkd = float((raw_close * volume).where(~susp, np.nan).rolling(20, min_periods=5).mean().dropna().iloc[-1])
         micro_info = calculate_hkex_microstructure_cost(
@@ -652,7 +635,10 @@ def analyze_stock_trend(ticker: str) -> tuple[dict[str, Any] | None, str | None]
         exec_price = round_to_hk_tick(next_open_raw * (1.0 + (micro_info["slippage_bps"] / 10000.0)))
 
         if up_prob >= 0.60:
-            trend = f"📈 強勢多頭機率 ({up_prob*100:.1f}% | Z={composite_z:+.2f}σ)"
+            if st_prob < 0.50 and lt_prob < 0.50:
+                trend = f"🔄 價值超跌反彈機率 ({up_prob*100:.1f}% | Z={composite_z:+.2f}σ)"
+            else:
+                trend = f"📈 強勢多頭機率 ({up_prob*100:.1f}% | Z={composite_z:+.2f}σ)"
         elif up_prob <= 0.40:
             trend = f"📉 弱勢空頭機率 ({up_prob*100:.1f}% | Z={composite_z:+.2f}σ)"
         else:

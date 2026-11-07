@@ -67,8 +67,8 @@ def run_web_dashboard(port: int | None = None) -> None:
 def run_trend_analysis(ticker: str) -> None:
     """Run Swing Trend Multi-Factor Evaluation & VIF Diagnostics."""
     try:
-        from hk_quant_system.config.settings import normalize_hk_ticker
-        from hk_quant_system.engine.alpha import analyze_stock_trend
+        from config.settings import normalize_hk_ticker
+        from engine.alpha import analyze_stock_trend
     except (ImportError, ValueError):
         from config.settings import normalize_hk_ticker
         from engine.alpha import analyze_stock_trend
@@ -107,8 +107,8 @@ def run_trend_analysis(ticker: str) -> None:
 def run_intraday_signal(ticker: str, interval: str = "15m") -> None:
     """Generate Intraday Execution Signal & Tick-Adjusted Stops/Targets."""
     try:
-        from hk_quant_system.config.settings import load_portfolio_config, normalize_hk_ticker
-        from hk_quant_system.engine.alpha import generate_day_trading_signal
+        from config.settings import load_portfolio_config, normalize_hk_ticker
+        from engine.alpha import generate_day_trading_signal
     except (ImportError, ValueError):
         from config.settings import load_portfolio_config, normalize_hk_ticker
         from engine.alpha import generate_day_trading_signal
@@ -147,8 +147,8 @@ def run_intraday_signal(ticker: str, interval: str = "15m") -> None:
 def run_accuracy_validation(ticker: str, horizon: int = 21) -> None:
     """Run Multi-Horizon Historical Accuracy & Monotonicity Validation."""
     try:
-        from hk_quant_system.config.settings import normalize_hk_ticker
-        from hk_quant_system.engine.backtest import evaluate_historical_prediction_accuracy
+        from config.settings import normalize_hk_ticker
+        from engine.backtest import evaluate_historical_prediction_accuracy
     except (ImportError, ValueError):
         from config.settings import normalize_hk_ticker
         from engine.backtest import evaluate_historical_prediction_accuracy
@@ -175,8 +175,8 @@ def run_accuracy_validation(ticker: str, horizon: int = 21) -> None:
 def run_portfolio_backtest() -> None:
     """Run Portfolio Optimization & Walk-Forward OOS Backtest."""
     try:
-        from hk_quant_system.config.settings import load_portfolio_config
-        from hk_quant_system.engine.risk import analyze_portfolio_health
+        from config.settings import load_portfolio_config
+        from engine.risk import analyze_portfolio_health
     except (ImportError, ValueError):
         from config.settings import load_portfolio_config
         from engine.risk import analyze_portfolio_health

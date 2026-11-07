@@ -14,22 +14,13 @@ from typing import Any
 import numpy as np
 import yfinance as yf
 
-try:
-    from hk_quant_system.config.settings import (
-        HK_DEFAULT_LOT_SIZES,
-        get_candidate_tickers,
-        get_hk_tick_size,
-        normalize_hk_ticker,
-        round_to_hk_tick,
-    )
-except (ImportError, ValueError):
-    from config.settings import (
-        HK_DEFAULT_LOT_SIZES,
-        get_candidate_tickers,
-        get_hk_tick_size,
-        normalize_hk_ticker,
-        round_to_hk_tick,
-    )
+from config.settings import (
+    HK_DEFAULT_LOT_SIZES,
+    get_candidate_tickers,
+    get_hk_tick_size,
+    normalize_hk_ticker,
+    round_to_hk_tick,
+)
 
 try:
     import futu as ft
@@ -69,7 +60,6 @@ def from_futu_ticker(futu_code: str) -> str:
 
 def check_futu_opend_connection(host: str = "127.0.0.1", port: int = 11111, timeout: float = 0.5) -> bool:
     """Test TCP socket connection to FutuOpenD gateway."""
-    import socket
     try:
         with socket.create_connection((host, int(port)), timeout=timeout):
             return True
@@ -100,23 +90,17 @@ def get_futu_realtime_quote(ticker: str, host: str = "127.0.0.1", port: int = 11
             return {
                 "ticker": ticker,
                 "futu_code": futu_code,
-                "last_price": last_p,
-                "open": float(row.get("open_price", last_p)),
-                "high": float(row.get("high_price", last_p)),
-                "low": float(row.get("low_price", last_p)),
-                "prev_close": float(row.get("prev_close_price", last_p)),
-                "volume": float(row.get("volume", 0.0)),
-                "turnover": float(row.get("turnover", 0.0)),
-                "bid_price": bid_p,
-                "ask_price": ask_p,
-                "bid_vol": int(row.get("bid_vol", 0)),
-                "ask_vol": int(row.get("ask_vol", 0)),
+                "price": last_p,
+                "bid": bid_p,
+                "ask": ask_p,
                 "spread": spread,
                 "spread_bps": spread_bps,
+                "spread_ticks": int(round(spread / get_hk_tick_size(last_p))),
+                "volume": int(row.get("volume", 0)),
+                "turnover": float(row.get("turnover", 0.0)),
                 "lot_size": int(row.get("lot_size", HK_DEFAULT_LOT_SIZES.get(normalize_hk_ticker(ticker), 100))),
-                "data_time": str(row.get("data_time", datetime.now().strftime("%H:%M:%S"))),
-                "is_futu_live": True,
-                "source": "FutuOpenD Level 2 毫秒級實盤行情",
+                "source": "🟢 富途牛牛 Level 2 實盤即時串流",
+                "update_time": str(row.get("data_time", datetime.now().strftime("%H:%M:%S"))),
             }
     except Exception as e:
         print(f"Futu quote error: {e}")
@@ -199,7 +183,7 @@ def get_futu_order_book(
                         "order_book_imbalance": obi,
                         "update_time": datetime.now().strftime("%H:%M:%S.%f")[:12],
                     }
-            # If Level 2 get_order_book was denied (user has Level 1 rights), fetch real-time Level 1 quote!
+            # Fallback Level 1 quote if L2 permission not enabled
             try:
                 ret_q, df_q = ctx.get_stock_quote([futu_code])
                 if ret_q == ft.RET_OK and not df_q.empty:
@@ -216,11 +200,9 @@ def get_futu_order_book(
                         mid_price = (bid_1 + ask_1) / 2.0
                         tick = get_hk_tick_size(mid_price)
 
-                        # Level 1 provides exact real-time 0-delay Bid 1 and Ask 1
                         l1_bids = [{"level": 1, "price": bid_1, "volume": b1_v, "orders": max(1, b1_v // lot_sz)}]
                         l1_asks = [{"level": 1, "price": ask_1, "volume": a1_v, "orders": max(1, a1_v // lot_sz)}]
 
-                        # Extrapolate tiers 2-10 along statutory HKEX ticks for layout consistency
                         for i in range(2, num + 1):
                             bp = round_to_hk_tick(bid_1 - (i - 1) * tick)
                             ap = round_to_hk_tick(ask_1 + (i - 1) * tick)
@@ -310,6 +292,7 @@ def get_futu_order_book(
         "update_time": datetime.now().strftime("%H:%M:%S"),
     }
 
+
 def fetch_realtime_spot_price(ticker: str, futu_host: str = "127.0.0.1", futu_port: int = 11111) -> float | None:
     """
     Fetch the latest real-time / near-real-time spot quote.
@@ -326,12 +309,12 @@ def fetch_realtime_spot_price(ticker: str, futu_host: str = "127.0.0.1", futu_po
             fast = getattr(tk, "fast_info", None)
             if fast is not None:
                 p = getattr(fast, "last_price", None) or getattr(fast, "regular_market_price", None)
-                if p is not None and not np.isnan(p) and float(p) > 0:
+                if p is not None and isinstance(p, (int, float, np.floating, np.integer)) and not np.isnan(float(p)) and float(p) > 0.05:
                     return float(p)
             info = getattr(tk, "info", None)
-            if info:
+            if info and isinstance(info, dict):
                 p = info.get("regularMarketPrice") or info.get("currentPrice")
-                if p is not None and not np.isnan(p) and float(p) > 0:
+                if p is not None and isinstance(p, (int, float, np.floating, np.integer)) and not np.isnan(float(p)) and float(p) > 0.05:
                     return float(p)
         except Exception:
             continue

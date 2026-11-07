@@ -21,73 +21,49 @@ from plotly.subplots import make_subplots
 import streamlit as st
 
 _CURRENT_DIR = Path(__file__).resolve().parent
-_PACKAGE_ROOT = _CURRENT_DIR.parent
-_REPO_ROOT = _PACKAGE_ROOT.parent
+_PACKAGE_ROOT = _CURRENT_DIR if (_CURRENT_DIR / "config" / "settings.py").exists() else _CURRENT_DIR.parent
+_PKG_STR = str(_PACKAGE_ROOT)
 
-for _p in [str(_PACKAGE_ROOT), str(_REPO_ROOT)]:
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+sys.path = [p for p in sys.path if Path(p).resolve() != _PACKAGE_ROOT.parent]
+if _PKG_STR not in sys.path:
+    sys.path.insert(0, _PKG_STR)
 
-try:
-    from hk_quant_system.config.settings import (
-        DEFAULT_ALMGREN_GAMMA,
-        DEFAULT_BROKER_COMM_RATE,
-        DEFAULT_MIN_BROKER_COMM_HKD,
-        HK_DEFAULT_LOT_SIZES,
-        HK_SHORT_ELIGIBLE_WHITELIST,
-        is_hk_short_eligible,
-        load_portfolio_config,
-        normalize_hk_ticker,
-        save_portfolio_config,
-    )
-    from hk_quant_system.data.futu_gateway import (
-        check_futu_opend_connection,
-        fetch_realtime_spot_price,
-        get_futu_order_book,
-        get_futu_realtime_quote,
-        to_futu_ticker,
-    )
-    from hk_quant_system.data.loader import fetch_hk_macro_regime
-    from hk_quant_system.engine.alpha import (
-        analyze_stock_trend,
-        generate_day_trading_signal,
-    )
-    from hk_quant_system.engine.risk import analyze_portfolio_health
-    from hk_quant_system.engine.backtest import evaluate_historical_prediction_accuracy
-    from hk_quant_system.web.components import (
-        inject_terminal_and_portal_css,
-        render_factor_bars_html,
-    )
-except (ImportError, ValueError):
-    from config.settings import (
-        DEFAULT_ALMGREN_GAMMA,
-        DEFAULT_BROKER_COMM_RATE,
-        DEFAULT_MIN_BROKER_COMM_HKD,
-        HK_DEFAULT_LOT_SIZES,
-        HK_SHORT_ELIGIBLE_WHITELIST,
-        is_hk_short_eligible,
-        load_portfolio_config,
-        normalize_hk_ticker,
-        save_portfolio_config,
-    )
-    from data.futu_gateway import (
-        check_futu_opend_connection,
-        fetch_realtime_spot_price,
-        get_futu_order_book,
-        get_futu_realtime_quote,
-        to_futu_ticker,
-    )
-    from data.loader import fetch_hk_macro_regime
-    from engine.alpha import (
-        analyze_stock_trend,
-        generate_day_trading_signal,
-    )
-    from engine.risk import analyze_portfolio_health
-    from engine.backtest import evaluate_historical_prediction_accuracy
-    from web.components import (
-        inject_terminal_and_portal_css,
-        render_factor_bars_html,
-    )
+for _mod_name in list(sys.modules.keys()):
+    if _mod_name.split(".")[0] in ("config", "data", "engine", "web", "hk_quant_system"):
+        _mod_obj = sys.modules.get(_mod_name)
+        _mod_file = getattr(_mod_obj, "__file__", None)
+        if _mod_file and not str(Path(_mod_file).resolve()).startswith(_PKG_STR):
+            del sys.modules[_mod_name]
+
+from config.settings import (
+    DEFAULT_ALMGREN_GAMMA,
+    DEFAULT_BROKER_COMM_RATE,
+    DEFAULT_MIN_BROKER_COMM_HKD,
+    HK_DEFAULT_LOT_SIZES,
+    HK_SHORT_ELIGIBLE_WHITELIST,
+    is_hk_short_eligible,
+    load_portfolio_config,
+    normalize_hk_ticker,
+    save_portfolio_config,
+)
+from data.futu_gateway import (
+    check_futu_opend_connection,
+    fetch_realtime_spot_price,
+    get_futu_order_book,
+    get_futu_realtime_quote,
+    to_futu_ticker,
+)
+from data.loader import fetch_hk_macro_regime
+from engine.alpha import (
+    analyze_stock_trend,
+    generate_day_trading_signal,
+)
+from engine.risk import analyze_portfolio_health
+from engine.backtest import evaluate_historical_prediction_accuracy
+from web.components import (
+    inject_terminal_and_portal_css,
+    render_factor_bars_html,
+)
 
 st.set_page_config(
     page_title="香港股市預測 | HKEX AlphaEngine 機構級量化終端",
@@ -943,7 +919,7 @@ with tab2:
     else:
         c1, c2, c3, c4, c5, c6 = st.columns(6)
         c1.metric("最新現價 / 次日撮合價", f"${trend_res['price']:.2f}", f"撮合 ${trend_res['execution_price']:.2f}")
-        c2.metric("趨勢上漲機率 P(Up)", f"{trend_res['up_prob']*100:.1f}%", f"合成 Z {trend_res['composite_zscore']:+.2f}σ")
+        c2.metric("多因子綜合勝率 P(Up)", f"{trend_res['up_prob']*100:.1f}%", f"合成 Z {trend_res['composite_zscore']:+.2f}σ")
         c3.metric("短期戰術上漲機率", f"{trend_res['short_term_prob']*100:.1f}%", f"20D Z {trend_res['z_20d']:+.2f}σ")
         c4.metric("長期戰略上漲機率", f"{trend_res['long_term_prob']*100:.1f}%", f"200MA {trend_res['dist_200ma']*100:+.1f}%")
         c5.metric("滾動股息殖利率", f"{trend_res['dividend_yield']*100:.2f}%", "前復權已計入")

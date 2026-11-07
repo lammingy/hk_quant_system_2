@@ -17,54 +17,30 @@ import pandas as pd
 import yfinance as yf
 from scipy.stats import kurtosis, norm, pearsonr, skew, spearmanr
 
-try:
-    from hk_quant_system.config.settings import (
-        DEFAULT_ALMGREN_GAMMA,
-        DEFAULT_BROKER_COMM_RATE,
-        DEFAULT_MIN_BROKER_COMM_HKD,
-        MIN_REQUIRED_DAILY_BARS,
-        calculate_hkex_microstructure_cost,
-        get_candidate_tickers,
-        get_hk_tick_size,
-        normalize_hk_ticker,
-        round_to_hk_tick,
-    )
-    from hk_quant_system.data.loader import (
-        compute_active_daily_returns,
-        fetch_fundamental_data,
-        fetch_hk_macro_regime,
-        safe_download_ohlcv,
-    )
-    from hk_quant_system.engine.alpha import compute_factor_exposure_and_ic_weights, compute_wilder_rsi
-    from hk_quant_system.engine.risk import (
-        compute_deflated_sharpe_ratio,
-        compute_ledoit_wolf_cov,
-        optimize_portfolio_weights,
-    )
-except (ImportError, ValueError):
-    from config.settings import (
-        DEFAULT_ALMGREN_GAMMA,
-        DEFAULT_BROKER_COMM_RATE,
-        DEFAULT_MIN_BROKER_COMM_HKD,
-        MIN_REQUIRED_DAILY_BARS,
-        calculate_hkex_microstructure_cost,
-        get_candidate_tickers,
-        get_hk_tick_size,
-        normalize_hk_ticker,
-        round_to_hk_tick,
-    )
-    from data.loader import (
-        compute_active_daily_returns,
-        fetch_fundamental_data,
-        fetch_hk_macro_regime,
-        safe_download_ohlcv,
-    )
-    from engine.alpha import compute_factor_exposure_and_ic_weights, compute_wilder_rsi
-    from engine.risk import (
-        compute_deflated_sharpe_ratio,
-        compute_ledoit_wolf_cov,
-        optimize_portfolio_weights,
-    )
+from config.settings import (
+    DEFAULT_ALMGREN_GAMMA,
+    DEFAULT_BROKER_COMM_RATE,
+    DEFAULT_MIN_BROKER_COMM_HKD,
+    MIN_REQUIRED_DAILY_BARS,
+    calculate_hkex_microstructure_cost,
+    get_candidate_tickers,
+    get_hk_tick_size,
+    normalize_hk_ticker,
+    round_to_hk_tick,
+)
+from data.loader import (
+    compute_active_daily_returns,
+    fetch_fundamental_data,
+    fetch_hk_macro_regime,
+    safe_download_ohlcv,
+)
+from engine.alpha import compute_factor_exposure_and_ic_weights, compute_wilder_rsi
+from engine.risk import (
+    compute_deflated_sharpe_ratio,
+    compute_ledoit_wolf_cov,
+    optimize_portfolio_weights,
+)
+
 
 def run_strategy_backtest(
     price_df: pd.DataFrame,
