@@ -318,9 +318,15 @@ def calculate_ttm_dividend_yield(
 
     price_df = price_df_override
     tk = None
-    if price_df is None and yf is not None:
+    if yf is not None:
         try:
             tk = yf.Ticker(clean_ticker, session=_YF_SESSION)
+        except Exception as exc:
+            logger.warning("yfinance Ticker() instantiation error for %s: %s", clean_ticker, exc)
+            tk = None
+
+    if price_df is None and tk is not None:
+        try:
             price_df = tk.history(period="1mo", interval="1d", auto_adjust=False, timeout=12)
         except Exception as exc:
             logger.warning("yfinance history() fetch error for %s: %s", clean_ticker, exc)
@@ -360,7 +366,14 @@ def calculate_ttm_dividend_yield(
             div_series = tk.dividends
         except Exception as exc:
             logger.warning("Failed to fetch tk.dividends for %s: %s", clean_ticker, exc)
-            div_series = pd.Series(dtype=float)
+            div_series = None
+        if div_series is None or len(div_series) == 0:
+            try:
+                act = getattr(tk, "actions", None)
+                if act is not None and not act.empty and "Dividends" in act.columns:
+                    div_series = act["Dividends"].dropna()
+            except Exception:
+                pass
 
     if div_series is None or len(div_series) == 0:
         logger.warning("No dividend history returned for %s; TTM yield = 0.0%%", clean_ticker)

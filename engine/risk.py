@@ -14,7 +14,10 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
+try:
+    import yfinance as yf
+except ImportError:
+    yf = None
 from scipy.cluster.hierarchy import leaves_list, linkage
 from scipy.optimize import minimize
 from scipy.spatial.distance import squareform
