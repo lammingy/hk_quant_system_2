@@ -658,15 +658,22 @@ def calculate_ttm_dividend_yield(
         if raw_y is not None and isinstance(raw_y, (int, float)) and not math.isnan(float(raw_y)) and float(raw_y) > 0:
             y_val = float(raw_y)
             info_yield = y_val / 100.0 if y_val > 0.5 else y_val
+            # Check if Yahoo divided USD dividend rate by HKD stock price (e.g. 0.0054 for 0005.HK)
+            if (fin_curr != "HKD" or clean_ticker == "0005.HK") and 0.0 < info_yield < 0.015:
+                detected_div_curr = fin_curr if fin_curr != "HKD" else "USD"
+                fx_rate = _fetch_live_fx_to_hkd(detected_div_curr)
+                info_yield = info_yield * fx_rate
 
         raw_rate = info_dict.get("trailingAnnualDividendRate")
         if raw_rate is None or raw_rate == 0:
             raw_rate = info_dict.get("dividendRate")
         if (info_yield is None or info_yield <= 0) and raw_rate is not None and isinstance(raw_rate, (int, float)) and not math.isnan(float(raw_rate)) and float(raw_rate) > 0:
-            if fin_curr != "HKD" and fin_curr != "":
-                fx_rate = _fetch_live_fx_to_hkd(fin_curr)
-                detected_div_curr = fin_curr
-            rate_hkd = float(raw_rate) * fx_rate
+            rate_f = float(raw_rate)
+            naive_y = rate_f / spot_price_hkd if spot_price_hkd > 0 else 0.0
+            if (fin_curr != "HKD" or clean_ticker == "0005.HK") and 0.0 < naive_y < 0.015:
+                detected_div_curr = fin_curr if fin_curr != "HKD" else "USD"
+                fx_rate = _fetch_live_fx_to_hkd(detected_div_curr)
+            rate_hkd = rate_f * fx_rate
             if spot_price_hkd > 0:
                 info_yield = rate_hkd / spot_price_hkd
 

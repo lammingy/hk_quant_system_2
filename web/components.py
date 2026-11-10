@@ -2,16 +2,11 @@
 web/components.py - Bento UI 卡片、表格、指標與 Plotly 圖表元件
 ===================================================================================
 Provides Ultra-High-Contrast Pro Dark Financial Terminal CSS (TradingView / Bloomberg Style),
-horizontal factor exposure bars, and reusable Plotly chart builders for effortless visibility.
+horizontal factor exposure bars, macro ribbon CSS, and reusable UI helpers for effortless readability.
 """
 
 from __future__ import annotations
 
-import numpy as np
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
 
 
@@ -78,12 +73,65 @@ section[data-testid="stSidebar"] label {
 /* 4. Streamlit Form Widgets & Inputs */
 label, [data-testid="stWidgetLabel"] p {
     color: #FFFFFF !important;
-    font-size: 0.95rem !important;
+    font-size: 0.94rem !important;
     font-weight: 700 !important;
     letter-spacing: 0.2px !important;
 }
 
-/* 5. Metrics Cards (High Luminance) */
+/* 5. Top Macro Status Ribbon */
+.macro-ribbon {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    background: linear-gradient(90deg, #111827 0%, #161F30 100%);
+    border: 1.5px solid #334155;
+    border-left: 4px solid #38BDF8;
+    border-radius: 12px;
+    padding: 12px 18px;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.macro-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #FFFFFF;
+}
+
+.live-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #10B981;
+    display: inline-block;
+    animation: liveDotPulse 2s infinite;
+}
+
+.macro-pills {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.macro-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.86rem;
+    color: #E2E8F0;
+    background: rgba(30, 41, 59, 0.75);
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* 6. Metrics Cards (High Luminance) */
 div[data-testid="stMetric"] {
     background: #161F30 !important;
     border: 1.5px solid #334155 !important;
@@ -96,8 +144,7 @@ div[data-testid="stMetric"] {
 div[data-testid="stMetricLabel"] p {
     font-size: 0.88rem !important;
     font-weight: 700 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.6px !important;
+    letter-spacing: 0.4px !important;
     color: #CBD5E1 !important;
 }
 
@@ -111,10 +158,10 @@ div[data-testid="stMetricValue"] div {
 
 div[data-testid="stMetricDelta"] div {
     font-weight: 700 !important;
-    font-size: 0.90rem !important;
+    font-size: 0.88rem !important;
 }
 
-/* 6. Bento Grid Cards */
+/* 7. Bento Grid Cards & Hero Verdict Banner */
 .bento-card {
     position: relative;
     overflow: hidden;
@@ -127,9 +174,22 @@ div[data-testid="stMetricDelta"] div {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.40) !important;
 }
 
+.verdict-banner {
+    background: linear-gradient(135deg, #161F30 0%, #1E293B 100%) !important;
+    border: 1.5px solid #38BDF8 !important;
+    border-radius: 14px !important;
+    padding: 16px 22px !important;
+    margin-bottom: 16px !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 14px !important;
+}
+
 .bento-title {
-    font-size: 0.92rem !important;
-    letter-spacing: 0.5px !important;
+    font-size: 0.95rem !important;
+    letter-spacing: 0.4px !important;
     color: #FFFFFF !important;
     font-weight: 800 !important;
     margin-bottom: 12px !important;
@@ -144,7 +204,7 @@ div[data-testid="stMetricDelta"] div {
     display: grid !important;
     grid-template-columns: repeat(2, 1fr) !important;
     gap: 12px !important;
-    margin-top: 12px !important;
+    margin-top: 10px !important;
 }
 
 .exec-cell {
@@ -163,7 +223,7 @@ div[data-testid="stMetricDelta"] div {
 
 .exec-val {
     font-family: 'JetBrains Mono', monospace !important;
-    font-size: 1.15rem !important;
+    font-size: 1.18rem !important;
     font-weight: 800 !important;
     color: #FFFFFF !important;
 }
@@ -175,42 +235,43 @@ div[data-testid="stMetricDelta"] div {
     color: #FFFFFF;
 }
 
-/* 7. Semantic Badges (Bold & Readable) */
+/* 8. Semantic Badges (Bold & Readable) */
 .badge-bull {
     background: rgba(16, 185, 129, 0.22) !important;
     color: #34D399 !important;
     border: 1.5px solid #10B981 !important;
-    padding: 4px 12px !important;
+    padding: 5px 14px !important;
     border-radius: 999px !important;
     font-weight: 700 !important;
-    font-size: 0.82rem !important;
+    font-size: 0.85rem !important;
 }
 
 .badge-bear {
     background: rgba(244, 63, 94, 0.22) !important;
     color: #FB7185 !important;
     border: 1.5px solid #F43F5E !important;
-    padding: 4px 12px !important;
+    padding: 5px 14px !important;
     border-radius: 999px !important;
     font-weight: 700 !important;
-    font-size: 0.82rem !important;
+    font-size: 0.85rem !important;
 }
 
 .badge-warn {
     background: rgba(245, 158, 11, 0.22) !important;
     color: #FBBF24 !important;
     border: 1.5px solid #F59E0B !important;
-    padding: 4px 12px !important;
+    padding: 5px 14px !important;
     border-radius: 999px !important;
     font-weight: 700 !important;
-    font-size: 0.82rem !important;
+    font-size: 0.85rem !important;
 }
 
-/* 8. Tabs High-Contrast Bar */
+/* 9. Tabs High-Contrast Bar */
 button[data-baseweb="tab"] {
     font-weight: 700 !important;
-    font-size: 0.98rem !important;
+    font-size: 1.00rem !important;
     color: #CBD5E1 !important;
+    padding: 10px 18px !important;
 }
 
 button[data-baseweb="tab"][aria-selected="true"] {
@@ -219,11 +280,12 @@ button[data-baseweb="tab"][aria-selected="true"] {
     font-weight: 800 !important;
 }
 
-/* 9. Expanders */
+/* 10. Expanders */
 div[data-testid="stExpander"] {
     background: #161F30 !important;
     border: 1.5px solid #334155 !important;
     border-radius: 12px !important;
+    margin-top: 8px !important;
 }
 
 div[data-testid="stExpander"] summary {
@@ -240,7 +302,7 @@ div[data-testid="stExpander"] * {
     color: #F1F5F9 !important;
 }
 
-/* 10. Tables & Markdown Tables */
+/* 11. Tables & Markdown Tables */
 table {
     color: #FFFFFF !important;
     width: 100% !important;

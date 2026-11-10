@@ -225,6 +225,12 @@ def evaluate_historical_prediction_accuracy(
 ) -> tuple[dict[str, Any] | None, str | None]:
     """
     Vectorized Multi-Horizon Historical Signal Validation & Accuracy Engine.
+    - Strictly causal t-1 signal decision -> Open[t] execution (zero look-ahead bias).
+    - Zero artificial floors (no 0.518 or 0.026 hard clips, no abs() on IC):
+      weak/choppy stocks authentically reflect negative IC and < 50% hit rates,
+      while strong trending stocks reflect positive IC and > 53% hit rates.
+    - Retains Britten-Jones / Hansen-Hodrick horizon overlap de-biasing sqrt(1 + 0.55*(k-1))
+      and Newey-West autocorrelation-robust standard errors.
     """
     try:
         k = max(2, int(forward_horizon))
@@ -237,7 +243,7 @@ def evaluate_historical_prediction_accuracy(
         if df_full is None or matched_ticker is None:
             return None, f"無法獲取 {ticker} 足夠的歷史日線數據（需至少 {MIN_REQUIRED_DAILY_BARS} 個有效交易日）"
 
-        susp_mask = df_full['Is_Suspended'] if 'Is_Suspended' in df_full.columns else (df_full['Volume'] <= 0)
+        susp_mask = df_full["Is_Suspended"] if "Is_Suspended" in df_full.columns else (df_full["Volume"] <= 0)
         df = df_full.loc[~susp_mask].copy()
         if len(df) < MIN_REQUIRED_DAILY_BARS:
             return None, f"{matched_ticker} 剔除停牌日後有效交易日僅 {len(df)} 根，不足 {MIN_REQUIRED_DAILY_BARS} 根最低門檻。"
@@ -258,8 +264,7 @@ def evaluate_historical_prediction_accuracy(
             ic_window=max(252, req_bars),
         )
 
-        # Institutional Anti-Overfitting: Strictly Causal Walk-Forward Bayesian Factor Alignment
-        # Uses only past completed k-day returns realized on or before bar t-1 (zero lookahead leakage)
+        # Strictly Causal Walk-Forward Bayesian Factor Alignment (zero look-ahead leakage)
         f_df = factor_res["factor_df"]
         close_s = df["Close"]
         open_s = df["Open"] if "Open" in df.columns else close_s
@@ -349,13 +354,10 @@ def evaluate_historical_prediction_accuracy(
         atr_pct_eval = atr_pct_lagged[eval_indices]
         eval_dates = df.index[eval_indices]
 
-        # Secular-drift-neutralized returns prevent multi-year passive bull/bear drift from masquerading as timing IC
-        s_ret_raw = pd.Series(raw_fwd_returns, index=eval_dates)
-        secular_drift = s_ret_raw.rolling(min(180, max(40, n_eval // 3)), min_periods=20).mean().bfill().fillna(0.0)
-        s_ret_dem = s_ret_raw - 0.65 * secular_drift
-        dem_fwd_returns = s_ret_dem.values
-
-        stop_dist_vec = np.clip(float(atr_stop_mult) * atr_pct_eval, 0.015, 0.35)
+        # Authentic forward returns (no secular drift distortion)
+        s_ret = pd.Series(raw_fwd_returns, index=eval_dates)
+        # Scale stop-loss distance by sqrt(k) to match multi-day holding horizon volatility
+        stop_dist_vec = np.clip(float(atr_stop_mult) * atr_pct_eval * np.sqrt(max(1.0, k / 2.0)), 0.025, 0.40)
 
         sig_sign = np.where(z_eval >= 0.0, 1.0, -1.0)
         mae_vec = np.where(
@@ -379,8 +381,13 @@ def evaluate_historical_prediction_accuracy(
         first_stop_day = np.argmax(hit_stop_matrix, axis=1) + 1
         actual_holding_days = np.where(stopped_out_mask, first_stop_day, k).astype(float)
 
-        unstopped_dir_ret = sig_sign * dem_fwd_returns
-        realized_dir_ret = np.where(stopped_out_mask, -stop_dist_vec * 0.65, unstopped_dir_ret) - round_trip_cost_frac
+        # Deduct round-trip transaction cost only at rebalance / signal-flip transitions (not every rolling bar)
+        sig_Active = np.where(np.abs(z_eval) >= float(signal_z_threshold), sig_sign, 0.0)
+        sig_changes = np.abs(np.diff(sig_Active, prepend=0.0)) > 0
+        avg_cost_per_eval_bar = round_trip_cost_frac * float(np.mean(sig_changes))
+
+        unstopped_dir_ret = sig_sign * raw_fwd_returns
+        realized_dir_ret = np.where(stopped_out_mask, -stop_dist_vec * 0.75, unstopped_dir_ret) - avg_cost_per_eval_bar
 
         active_sig_mask = np.abs(z_eval) >= float(signal_z_threshold)
         if np.sum(active_sig_mask) < 12:
@@ -389,15 +396,13 @@ def evaluate_historical_prediction_accuracy(
         # Britten-Jones / Hansen-Hodrick Horizon Overlap De-biasing Factor: sqrt(1 + 0.55 * (k - 1))
         overlap_factor = np.sqrt(1.0 + 0.55 * max(0, k - 1))
         s_z = pd.Series(z_eval, index=eval_dates)
-        s_ret = s_ret_dem
 
-        raw_pearson, _ = pearsonr(z_eval, dem_fwd_returns) if np.std(z_eval) > 1e-9 else (0.0, 1.0)
-        raw_spearman, _ = spearmanr(z_eval, dem_fwd_returns) if np.std(z_eval) > 1e-9 else (0.0, 1.0)
-        deoverlapped_ic = float((0.0 if np.isnan(raw_spearman) else raw_spearman) / overlap_factor)
+        raw_pearson, _ = pearsonr(z_eval, raw_fwd_returns) if np.std(z_eval) > 1e-9 else (0.0, 1.0)
+        raw_spearman, _ = spearmanr(z_eval, raw_fwd_returns) if np.std(z_eval) > 1e-9 else (0.0, 1.0)
 
-        # Empirical Bayes Shrinkage toward institutional out-of-sample prior (+0.048)
-        overall_rank_ic = float(np.clip(0.55 * abs(deoverlapped_ic) + 0.45 * 0.048, 0.028, 0.082))
-        overall_pearson_ic = float(np.clip(0.55 * abs(float(0.0 if np.isnan(raw_pearson) else raw_pearson) / overlap_factor) + 0.45 * 0.045, 0.025, 0.080))
+        # Authentic signed IC without abs() or artificial positive floors
+        overall_rank_ic = float(np.clip((0.0 if np.isnan(raw_spearman) else raw_spearman) / overlap_factor, -0.25, 0.25))
+        overall_pearson_ic = float(np.clip((0.0 if np.isnan(raw_pearson) else raw_pearson) / overlap_factor, -0.25, 0.25))
 
         roll_ic_window = max(60, min(120, n_eval // 3))
         rank_z = s_z.rank(pct=True)
@@ -407,24 +412,30 @@ def evaluate_historical_prediction_accuracy(
         cov_uv = (u_c * v_c).rolling(roll_ic_window, min_periods=20).mean()
         std_u = np.sqrt((u_c * u_c).rolling(roll_ic_window, min_periods=20).mean())
         std_v = np.sqrt((v_c * v_c).rolling(roll_ic_window, min_periods=20).mean())
-        raw_roll_ic = (cov_uv / (std_u * std_v * overlap_factor + 1e-9)).clip(-0.25, 0.25).dropna()
-        rolling_rank_ic = 0.50 * raw_roll_ic + 0.50 * overall_rank_ic
+        rolling_rank_ic = (cov_uv / (std_u * std_v * overlap_factor + 1e-9)).clip(-0.35, 0.35).dropna()
 
-        mean_ic = float(np.clip(0.60 * float(rolling_rank_ic.mean() if not rolling_rank_ic.empty else overall_rank_ic) + 0.40 * overall_rank_ic, 0.026, 0.078))
-        # Newey-West overlapping autocorrelation-adjusted standard error
-        raw_std_ic = float(rolling_rank_ic.std()) if len(rolling_rank_ic) > 2 else 0.075
-        nw_std_ic = float(max(0.056, raw_std_ic * np.sqrt(1.0 + 0.10 * k)))
-        ic_ir = float(np.clip(mean_ic / (nw_std_ic + 1e-9), 0.46, 0.94))
+        if not rolling_rank_ic.empty:
+            mean_ic = float(np.clip(0.55 * float(rolling_rank_ic.mean()) + 0.45 * overall_rank_ic, -0.25, 0.25))
+            raw_std_ic = float(rolling_rank_ic.std()) if len(rolling_rank_ic) > 2 else 0.065
+        else:
+            mean_ic = overall_rank_ic
+            raw_std_ic = 0.065
 
-        # Effective-sample-shrunk directional hit rate (eliminates bull-drift inflation)
-        correct_dir = (np.sign(z_eval[active_sig_mask]) == np.sign(dem_fwd_returns[active_sig_mask]))
-        raw_hit = float(np.mean(correct_dir)) if len(correct_dir) > 0 else 0.53
-        hit_rate = float(np.clip(0.45 * raw_hit + 0.55 * (0.528 + 0.42 * overall_rank_ic), 0.518, 0.578))
+        # Newey-West overlapping autocorrelation-adjusted standard error (preserves true sign of IC-IR)
+        nw_std_ic = float(max(0.042, raw_std_ic * np.sqrt(1.0 + 0.10 * k)))
+        ic_ir = float(np.clip(mean_ic / (nw_std_ic + 1e-9), -2.50, 2.50))
 
-        # Align signal rank with monotonic cross-sectional quantiles
-        aligned_signal_for_q = 0.65 * s_z.rank(pct=True) + 0.35 * s_ret.rank(pct=True) * overall_rank_ic * 8.0
+        # Authentic Directional Hit Rate (zero artificial 0.518 floor)
+        correct_dir = (np.sign(z_eval[active_sig_mask]) == np.sign(raw_fwd_returns[active_sig_mask]))
+        hit_rate = float(np.mean(correct_dir)) if len(correct_dir) > 0 else 0.50
+
+        # Pure Causal Quantile Grouping strictly on lagged signal s_z (zero future return leakage)
         try:
-            q_labels = pd.qcut(aligned_signal_for_q.rank(method="first"), q=5, labels=["Q1 (極空)", "Q2 (偏空)", "Q3 (中性)", "Q4 (偏多)", "Q5 (極多)"])
+            q_labels = pd.qcut(
+                s_z.rank(method="first"),
+                q=5,
+                labels=["Q1 (極空)", "Q2 (偏空)", "Q3 (中性)", "Q4 (偏多)", "Q5 (極多)"]
+            )
         except Exception:
             q_labels = pd.Series(["Q3 (中性)"] * n_eval, index=eval_dates)
 
@@ -432,22 +443,17 @@ def evaluate_historical_prediction_accuracy(
         quantile_summary = []
         quantile_cum_curves: dict[str, pd.Series] = {}
 
-        # Scale quantile returns by volatility target so multi-week horizons do not show overfitted 25% spreads
-        vol_scale_q = min(1.0, 0.022 / (sigma_20 * np.sqrt(k / 5.0) + 1e-9))
-        scaled_q_ret = s_ret * vol_scale_q
-        daily_equiv_ret = scaled_q_ret / float(k)
-
         for idx_q, q_name in enumerate(quantile_names):
             q_mask = (q_labels == q_name)
-            q_rets = scaled_q_ret[q_mask]
-            raw_m = float(q_rets.mean()) if not q_rets.empty else 0.0
-            # Structural monotonic anchor shrunk with empirical quantile mean
-            prior_q_m = (idx_q - 2.0) * 0.0065 * np.sqrt(k / 5.0)
-            mean_r = 0.50 * raw_m + 0.50 * prior_q_m
-            win_r = float(np.clip(0.50 + (idx_q - 2.0) * 0.035, 0.40, 0.62))
+            q_rets = s_ret[q_mask]
+            mean_r = float(q_rets.mean()) if not q_rets.empty else 0.0
+            win_r = float((q_rets > 0).mean()) if not q_rets.empty else 0.50
             ann_r = float((1.0 + mean_r) ** (252.0 / k) - 1.0) if mean_r > -0.99 else -0.99
 
-            q_daily_stream = pd.Series(np.where(q_mask, mean_r / float(k) + (q_rets.reindex(eval_dates, fill_value=0.0) - raw_m) * 0.35 / float(k), 0.0), index=eval_dates)
+            q_daily_stream = pd.Series(
+                np.where(q_mask, q_rets.reindex(eval_dates, fill_value=0.0) / float(k), 0.0),
+                index=eval_dates
+            )
             quantile_cum_curves[q_name] = (1.0 + q_daily_stream).cumprod()
 
             quantile_summary.append({
@@ -462,48 +468,51 @@ def evaluate_historical_prediction_accuracy(
         monotonicity_corr, _ = spearmanr([1, 2, 3, 4, 5], q_means)
         q5_q1_spread_pct = q_means[-1] - q_means[0]
 
-        # Volatility-targeted trade return metrics (realistic institutional sizing)
-        pos_size_scalar = min(0.55, 0.15 / (sigma_20 * np.sqrt(252.0) + 1e-9))
-        sized_active_rets = realized_dir_ret[active_sig_mask] * pos_size_scalar
-        wins = sized_active_rets[sized_active_rets > 0]
-        losses = sized_active_rets[sized_active_rets < 0]
+        # Authentic realized trade return metrics (zero artificial PF or Alpha floors)
+        active_rets = realized_dir_ret[active_sig_mask]
+        wins = active_rets[active_rets > 0]
+        losses = active_rets[active_rets <= 0]
 
-        gross_profit = float(np.sum(wins)) if len(wins) > 0 else 0.01
-        gross_loss = float(np.abs(np.sum(losses))) if len(losses) > 0 else 0.01
-        raw_pf = float(gross_profit / (gross_loss + 1e-6))
-        profit_factor = float(np.clip(0.45 * raw_pf + 0.55 * 1.42, 1.18, 1.78))
+        gross_profit = float(np.sum(wins)) if len(wins) > 0 else 0.0
+        gross_loss = float(np.abs(np.sum(losses))) if len(losses) > 0 else 1e-6
+        profit_factor = float(np.clip(gross_profit / (gross_loss + 1e-6), 0.10, 9.99))
 
-        avg_win = float(np.mean(wins)) if len(wins) > 0 else 0.012
-        avg_loss = float(np.abs(np.mean(losses))) if len(losses) > 0 else 0.008
-        raw_wlr = float(avg_win / (avg_loss + 1e-6))
-        win_loss_ratio = float(np.clip(0.45 * raw_wlr + 0.55 * 1.48, 1.22, 1.85))
+        avg_win = float(np.mean(wins)) if len(wins) > 0 else 0.0
+        avg_loss = float(np.abs(np.mean(losses))) if len(losses) > 0 else 1e-6
+        win_loss_ratio = float(np.clip(avg_win / (avg_loss + 1e-6), 0.10, 9.99))
 
-        expected_val_pct = float(np.clip((hit_rate * avg_win - (1.0 - hit_rate) * avg_loss) * 100.0 / max(0.35, pos_size_scalar), 0.35, 1.85))
-        avg_hold_days = float(np.mean(actual_holding_days[active_sig_mask]))
+        expected_val_pct = float(np.mean(active_rets) * 100.0) if len(active_rets) > 0 else 0.0
+        avg_hold_days = float(np.mean(actual_holding_days[active_sig_mask])) if np.sum(active_sig_mask) > 0 else float(k)
 
+        # Benchmark: HSI passive Buy-and-Hold annualized return over the evaluation window
         if hsi_df is not None and not hsi_df.empty:
             hsi_aligned = hsi_df["Close"].reindex(eval_dates).ffill().bfill()
             hsi_total = float(hsi_aligned.iloc[-1] / (hsi_aligned.iloc[0] + 1e-9) - 1.0)
-            hsi_ann_ret = float((1.0 + hsi_total) ** (252.0 / max(1, n_eval)) - 1.0) if hsi_total > -0.99 else 0.02
+            hsi_ann_ret = float((1.0 + hsi_total) ** (252.0 / max(1, n_eval)) - 1.0) if hsi_total > -0.99 else 0.0
         else:
             hsi_ann_ret = 0.02
-        hsi_ann_ret = float(np.clip(hsi_ann_ret, -0.12, 0.15))
 
-        # Information Ratio Fundamental Law: Expected Annualized Timing Alpha = IC * sqrt(Breadth) * Vol_Target
-        theoretical_timing_alpha = float(mean_ic * np.sqrt(252.0 / max(2.0, avg_hold_days)) * 0.34)
-        annualized_alpha = float(np.clip(theoretical_timing_alpha, 0.048, 0.135))
+        # Authentic Strategy Annualized Return & Excess Timing Alpha (Fundamental Law of Active Management)
+        mean_trade_ret = float(np.mean(active_rets)) if len(active_rets) > 0 else 0.0
+        trades_per_year = (252.0 / float(k)) * float(np.mean(active_sig_mask))
+        # Grinold-Kahn timing alpha contribution + empirical active trade return
+        gk_timing_alpha = float(mean_ic * np.sqrt(252.0 / max(2.0, avg_hold_days)) * (sigma_20 * np.sqrt(252.0)))
+        emp_excess = float(mean_trade_ret * trades_per_year)
+        annualized_alpha = float(np.clip(0.50 * emp_excess + 0.50 * gk_timing_alpha, -0.45, 0.45))
         strat_ann_ret = float(hsi_ann_ret + annualized_alpha)
 
-        n_act = int(np.sum(active_sig_mask))
-        tp = int(round(n_act * hit_rate * 0.54))
-        tn = int(round(n_act * hit_rate * 0.46))
-        fp = int(round(n_act * (1.0 - hit_rate) * 0.48))
-        fn = max(0, n_act - tp - tn - fp)
+        # Authentic Confusion Matrix from actual predictions vs outcomes
+        pred_bull = (z_eval[active_sig_mask] >= 0.0)
+        actual_up = (raw_fwd_returns[active_sig_mask] > 0.0)
+        tp = int(np.sum(pred_bull & actual_up))
+        fp = int(np.sum(pred_bull & (~actual_up)))
+        tn = int(np.sum((~pred_bull) & (~actual_up)))
+        fn = int(np.sum((~pred_bull) & actual_up))
 
         fpr = float(fp / max(1, fp + tn))
         precision = float(tp / max(1, tp + fp))
         recall = float(tp / max(1, tp + fn))
-        stop_trigger_rate = float(np.clip(np.mean(stopped_out_mask[active_sig_mask]), 0.12, 0.28))
+        stop_trigger_rate = float(np.mean(stopped_out_mask[active_sig_mask])) if np.sum(active_sig_mask) > 0 else 0.0
 
         x_score = score_eval
         y_ret_pct = raw_fwd_returns * 100.0
@@ -539,8 +548,8 @@ def evaluate_historical_prediction_accuracy(
             "annualized_alpha": annualized_alpha,
             "strategy_ann_return": strat_ann_ret,
             "benchmark_ann_return": hsi_ann_ret,
-            "profit_factor": min(profit_factor, 9.99),
-            "win_loss_ratio": min(win_loss_ratio, 9.99),
+            "profit_factor": profit_factor,
+            "win_loss_ratio": win_loss_ratio,
             "expected_return_pct": expected_val_pct,
             "avg_holding_days": avg_hold_days,
             "monotonicity_score": float(0.0 if np.isnan(monotonicity_corr) else monotonicity_corr),

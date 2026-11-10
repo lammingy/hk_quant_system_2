@@ -12,7 +12,10 @@ from datetime import datetime
 from typing import Any
 
 import numpy as np
-import yfinance as yf
+try:
+    import yfinance as yf
+except ImportError:
+    yf = None
 
 from config.settings import (
     HK_DEFAULT_LOT_SIZES,

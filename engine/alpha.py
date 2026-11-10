@@ -194,12 +194,6 @@ def compute_factor_exposure_and_ic_weights(
     valid_fwd = fwd_ret_for_ic.loc[valid_ic_slice.index]
 
     raw_ics: dict[str, float] = {}
-    ic_priors = {
-        "Momentum": 0.012,
-        "Value_Quality": 0.010,
-        "Volatility_Quality": 0.008,
-        "Liquidity_Micro": 0.008,
-    }
     overlap_adj = np.sqrt(1.0 + 0.50 * max(0, horizon - 1))
     valid_fwd_dem = valid_fwd - valid_fwd.rolling(120, min_periods=20).mean().bfill().fillna(0.0)
     for col in factor_df.columns:
@@ -208,9 +202,9 @@ def compute_factor_exposure_and_ic_weights(
         if mask_valid.sum() >= 20 and s_f[mask_valid].std() > 1e-6:
             ic_val, _ = spearmanr(s_f[mask_valid], valid_fwd_dem[mask_valid])
             raw_val = 0.0 if np.isnan(ic_val) else float(ic_val) / overlap_adj
-            raw_ics[col] = float(np.clip(0.60 * raw_val + 0.40 * ic_priors[col], -0.09, 0.11))
+            raw_ics[col] = float(np.clip(raw_val, -0.25, 0.25))
         else:
-            raw_ics[col] = ic_priors[col]
+            raw_ics[col] = 0.0
 
     # Institutional Bayesian Shrinkage: 65% Structural Economic Prior + 35% Empirical Rank-IC tilt
     prior_weights = {
@@ -275,7 +269,7 @@ def compute_factor_exposure_and_ic_weights(
             "factor_key": col,
             "factor_name": label_map[col],
             "z_score": round(aligned_z, 3),
-            "rank_ic": round(abs(raw_ics[col]) if (raw_ics[col] * w_v) >= 0 else raw_ics[col], 4),
+            "rank_ic": round(raw_ics[col], 4),
             "ic_weight_pct": round(abs(w_v) * 100.0, 1),
             "marginal_contribution_z": round(contrib_z, 3),
             "vif": round(vif_v, 2),
